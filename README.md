@@ -100,3 +100,7 @@ go test ./...
     re-encodes byte for byte.
   - `WAV404_AUDIO_TEST=1 go test ./cmd/sp404gui -run Oto` plays 0.2 s of
     silence on the real audio output.
+
+## License
+
+[MIT](LICENSE)
