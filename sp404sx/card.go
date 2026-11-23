@@ -2,6 +2,7 @@ package sp404sx
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -131,7 +132,7 @@ func writeFileAtomic(path string, data []byte) error {
 		return err
 	}
 	defer os.Remove(tmp.Name()) // no-op after a successful rename
-	_, err = tmp.Write(data)
+	err = writeChunked(tmp, data)
 	if err == nil {
 		err = tmp.Sync()
 	}
@@ -142,4 +143,21 @@ func writeFileAtomic(path string, data []byte) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)
+}
+
+// writeChunk bounds a single write call. macOS mounts FAT cards through
+// FSKit, and one write of tens of MB to a slow SD card fails with
+// "operation timed out" before it completes.
+const writeChunk = 1 << 20
+
+// writeChunked writes data in calls of at most writeChunk bytes.
+func writeChunked(w io.Writer, data []byte) error {
+	for len(data) > 0 {
+		n := min(len(data), writeChunk)
+		if _, err := w.Write(data[:n]); err != nil {
+			return err
+		}
+		data = data[n:]
+	}
+	return nil
 }
