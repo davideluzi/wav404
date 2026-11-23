@@ -48,7 +48,7 @@ You need [Go](https://go.dev/dl/) 1.27 or later and a C compiler (the GUI uses
 - **macOS**: Xcode Command Line Tools (`xcode-select --install`).
 - **Windows**: a MinGW-w64 GCC, e.g. from [MSYS2](https://www.msys2.org/).
 - **Linux** (Debian/Ubuntu):
-  `sudo apt install gcc libgl1-mesa-dev xorg-dev libasound2-dev`.
+  `sudo apt install gcc libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev libasound2-dev`.
   For the system file dialogs, also install `zenity` (GNOME) or `kdialog` (KDE).
   Without them the app uses its own built-in dialogs.
 
