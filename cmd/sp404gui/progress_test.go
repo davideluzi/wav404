@@ -2,7 +2,6 @@ package main
 
 import (
 	"math"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -43,17 +42,15 @@ type report struct {
 	detail string
 }
 
-// Importing several files reports a growing fraction that ends at 1, and
-// names the file being written.
+// An import reports a growing fraction that ends at 1, and names the file
+// and its pad.
 func TestImportReportsProgress(t *testing.T) {
 	g, _ := newTestGUI(t)
 	var reports []report
 	g.runTask = func(_ string, task func(progressFunc) error, done func(error)) {
 		done(task(func(f float64, d string) { reports = append(reports, report{f, d}) }))
 	}
-	a, _ := filepath.Abs(filepath.Join(testdata, "import", "s24.wav"))
-	b, _ := filepath.Abs(filepath.Join(testdata, "import", "s16.wav"))
-	g.importInto(0, []string{a, b})
+	g.importInto(0, fixture("s24.wav"))
 
 	if len(reports) < 2 {
 		t.Fatalf("got %d reports", len(reports))
@@ -63,13 +60,11 @@ func TestImportReportsProgress(t *testing.T) {
 			t.Fatalf("progress went backwards: %v", reports)
 		}
 	}
-	if last := reports[len(reports)-1]; math.Abs(last.frac-1) > 1e-9 {
+	last := reports[len(reports)-1]
+	if math.Abs(last.frac-1) > 1e-9 {
 		t.Errorf("last fraction = %v, want 1", last.frac)
 	}
-	if !strings.Contains(reports[0].detail, "1 of 2") || !strings.Contains(reports[0].detail, "s24.wav") {
-		t.Errorf("first detail = %q", reports[0].detail)
-	}
-	if last := reports[len(reports)-1].detail; !strings.Contains(last, "2 of 2") || !strings.Contains(last, "s16.wav") {
-		t.Errorf("last detail = %q", last)
+	if !strings.Contains(last.detail, "1 of 1") || !strings.Contains(last.detail, "A1") || !strings.Contains(last.detail, "s24.wav") {
+		t.Errorf("detail = %q", last.detail)
 	}
 }

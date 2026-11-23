@@ -203,7 +203,7 @@ func TestWaveReloadsAfterImport(t *testing.T) {
 	if err := os.WriteFile(src, silent.EncodeWAV(), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	g.importInto(j5, []string{src})
+	g.importInto(j5, src)
 	if reopenPad(t, root, j5) != recBefore {
 		t.Fatal("setup: the new pad record should be identical to the old one")
 	}

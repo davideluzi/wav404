@@ -40,19 +40,6 @@ func tileFor(c *sp404sx.Card, index int) tile {
 	return t
 }
 
-// dropTargets returns the pads that n dropped files fill, starting at
-// first and never past the last pad, plus the names of the assigned pads
-// that would be overwritten.
-func dropTargets(c *sp404sx.Card, first, n int) (pads []int, overwrite []string) {
-	for i := first; i < first+n && i < sp404sx.NumPads; i++ {
-		pads = append(pads, i)
-		if !c.Info.Pads[i].Empty() {
-			overwrite = append(overwrite, sp404sx.PadName(i))
-		}
-	}
-	return pads, overwrite
-}
-
 // findCards returns the candidates that contain an SP-404SX card.
 func findCards(candidates []string) []string {
 	var cards []string

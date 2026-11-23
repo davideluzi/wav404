@@ -230,7 +230,7 @@ func (g *gui) refresh() {
 	case g.card == nil:
 		setText(g.info, noCardText)
 	case !hasPad:
-		setText(g.info, "Select a pad, or drop WAV/AIFF files onto a pad.")
+		setText(g.info, "Select a pad, or drop a WAV/AIFF file onto a pad.")
 	case g.card.Info.Pads[g.selected].Empty():
 		setText(g.info, sp404sx.PadName(g.selected)+" is empty: Import… or drop a file onto it.")
 	default:
@@ -240,24 +240,27 @@ func (g *gui) refresh() {
 	}
 }
 
-// drop imports the dropped files into the pad under the cursor (or the
-// selected pad) and the pads after it.
-func (g *gui) drop(pos fyne.Position, uris []fyne.URI) {
+// padAt returns the pad of the tile under pos (absolute canvas position)
+// in the current bank. ok is false with no card or outside the tiles.
+func (g *gui) padAt(pos fyne.Position) (pad int, ok bool) {
 	if g.card == nil {
-		g.showError(errors.New("open a card first"))
-		return
+		return 0, false
 	}
-	first := g.selected
 	driver := fyne.CurrentApp().Driver()
 	for i, t := range g.tiles {
 		p := driver.AbsolutePositionForObject(t)
 		s := t.Size()
 		if pos.X >= p.X && pos.X < p.X+s.Width && pos.Y >= p.Y && pos.Y < p.Y+s.Height {
-			first = g.bank*sp404sx.PadsPerBank + i
+			return g.bank*sp404sx.PadsPerBank + i, true
 		}
 	}
-	if first < 0 {
-		g.showError(errors.New("drop the files onto a pad"))
+	return 0, false
+}
+
+// drop imports a single dropped file into the pad under the cursor.
+func (g *gui) drop(pos fyne.Position, uris []fyne.URI) {
+	if g.card == nil {
+		g.showError(errors.New("open a card first"))
 		return
 	}
 	var paths []string
@@ -266,57 +269,53 @@ func (g *gui) drop(pos fyne.Position, uris []fyne.URI) {
 			paths = append(paths, u.Path())
 		}
 	}
-	g.importInto(first, paths)
-}
-
-// importInto imports paths into consecutive pads starting at first,
-// asking before overwriting assigned pads.
-func (g *gui) importInto(first int, paths []string) {
-	if len(paths) == 0 {
+	if len(paths) != 1 {
+		g.showError(errors.New("drop one file at a time"))
 		return
 	}
-	pads, overwrite := dropTargets(g.card, first, len(paths))
+	pad, ok := g.padAt(pos)
+	if !ok {
+		g.showError(errors.New("drop the file onto a pad"))
+		return
+	}
+	g.importInto(pad, paths[0])
+}
+
+// importInto imports path into pad, asking before replacing a sample.
+func (g *gui) importInto(pad int, path string) {
 	run := func() {
 		g.stopPlayback()
 		g.runTask("Importing…", func(report progressFunc) error {
-			sizes := make([]int64, len(paths))
-			for i, p := range paths {
-				if fi, err := os.Stat(p); err == nil {
-					sizes[i] = fi.Size()
-				}
+			var size int64
+			if fi, err := os.Stat(path); err == nil {
+				size = fi.Size()
 			}
-			batch := newBatchProgress(sizes)
-			for i, pad := range pads {
-				detail := fmt.Sprintf("File %d of %d → %s: %s", i+1, len(pads), sp404sx.PadName(pad), filepath.Base(paths[i]))
-				report(batch.fraction(i, 0, 1), detail)
-				err := g.card.ImportFileProgress(pad, paths[i], func(done, total int64) {
-					report(batch.fraction(i, done, total), detail)
-				})
-				if err != nil {
-					return err
-				}
-			}
-			return nil
+			batch := newBatchProgress([]int64{size})
+			detail := fmt.Sprintf("File 1 of 1 → %s: %s", sp404sx.PadName(pad), filepath.Base(path))
+			report(0, detail)
+			return g.card.ImportFileProgress(pad, path, func(done, total int64) {
+				report(batch.fraction(0, done, total), detail)
+			})
 		}, func(err error) {
 			g.invalidatePanel()
 			g.invalidateSamples()
-			g.selected = pads[len(pads)-1]
+			g.selected = pad
 			g.refresh()
 			g.showError(err)
 		})
 	}
-	if len(overwrite) == 0 {
+	if g.card.Info.Pads[pad].Empty() {
 		run()
 		return
 	}
-	g.confirm("Replace samples?",
-		fmt.Sprintf("These pads already have a sample that will be replaced:\n%s", strings.Join(overwrite, ", ")),
+	g.confirm("Replace sample?",
+		fmt.Sprintf("Pad %s already has a sample that will be replaced.", sp404sx.PadName(pad)),
 		"Replace", run)
 }
 
 func (g *gui) prefs() fyne.Preferences { return fyne.CurrentApp().Preferences() }
 
-// importDialog imports one or more files starting at the selected pad.
+// importDialog imports one file into the selected pad.
 // Card and pad are fixed when the dialog opens: the native dialog does not
 // block the window, so the selection may change meanwhile.
 func (g *gui) importDialog() {
@@ -324,13 +323,13 @@ func (g *gui) importDialog() {
 		return
 	}
 	card, pad := g.card, g.selected
-	g.picker.openAudio(g.prefs().String(prefImportDir), func(paths []string, err error) {
-		if err != nil || len(paths) == 0 || g.card != card {
+	g.picker.openAudio(g.prefs().String(prefImportDir), func(path string, err error) {
+		if err != nil || path == "" || g.card != card {
 			g.showError(err)
 			return
 		}
-		g.prefs().SetString(prefImportDir, filepath.Dir(paths[0]))
-		g.importInto(pad, paths)
+		g.prefs().SetString(prefImportDir, filepath.Dir(path))
+		g.importInto(pad, path)
 	})
 }
 

@@ -1,14 +1,17 @@
 package main
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/test"
+	"fyne.io/fyne/v2/widget"
 
 	"github.com/davideluzi/wav404/sp404sx"
 )
@@ -67,6 +70,61 @@ func TestDropImportsIntoPadUnderCursor(t *testing.T) {
 	if g.tiles[0].tile.empty {
 		t.Error("tile A1 not refreshed")
 	}
+}
+
+// Dropping several files at once imports nothing and says why.
+func TestDropSeveralFilesIsRejected(t *testing.T) {
+	g, root := newTestGUI(t)
+	info := filepath.Join(root, "ROLAND", "SP-404SX", "SMPL", "PAD_INFO.BIN")
+	before, _ := os.Stat(info)
+	target := g.tiles[0]
+	pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(target).
+		Add(fyne.NewPos(target.Size().Width/2, target.Size().Height/2))
+	a, _ := filepath.Abs(filepath.Join(testdata, "import", "s24.wav"))
+	b, _ := filepath.Abs(filepath.Join(testdata, "import", "s16.wav"))
+	g.drop(pos, []fyne.URI{storage.NewFileURI(a), storage.NewFileURI(b)})
+
+	after, _ := os.Stat(info)
+	if !os.SameFile(before, after) {
+		t.Error("PAD_INFO.BIN was rewritten")
+	}
+	if !g.card.Info.Pads[0].Empty() {
+		t.Error("A1 was assigned")
+	}
+	if !overlayShows(g.win, "drop one file at a time") {
+		t.Error("no error dialog saying to drop one file at a time")
+	}
+}
+
+// overlayShows reports whether the top overlay (a dialog) contains a label
+// with text, ignoring case.
+func overlayShows(w fyne.Window, text string) bool {
+	top := w.Canvas().Overlays().Top()
+	if top == nil {
+		return false
+	}
+	found := false
+	var walk func(o fyne.CanvasObject)
+	walk = func(o fyne.CanvasObject) {
+		switch v := o.(type) {
+		case *widget.Label:
+			found = found || strings.Contains(strings.ToLower(v.Text), text)
+		case *canvas.Text:
+			found = found || strings.Contains(strings.ToLower(v.Text), text)
+		}
+		if c, ok := o.(*fyne.Container); ok {
+			for _, ch := range c.Objects {
+				walk(ch)
+			}
+		}
+		if wd, ok := o.(fyne.Widget); ok {
+			for _, ch := range test.WidgetRenderer(wd).Objects() {
+				walk(ch)
+			}
+		}
+	}
+	walk(top)
+	return found
 }
 
 func TestClearEmptiesSelectedPad(t *testing.T) {

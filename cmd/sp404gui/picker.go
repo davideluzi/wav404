@@ -20,9 +20,9 @@ const (
 )
 
 // picker shows file dialogs. done runs on the UI thread; a cancelled
-// dialog gives no paths and no error.
+// dialog gives an empty path and no error.
 type picker interface {
-	openAudio(dir string, done func(paths []string, err error))
+	openAudio(dir string, done func(path string, err error))
 	saveWAV(dir, name string, done func(path string, err error))
 	openFolder(dir string, done func(path string, err error))
 }
@@ -60,10 +60,10 @@ func notCancelled(err error) error {
 	return err
 }
 
-func (nativePicker) openAudio(dir string, done func([]string, error)) {
+func (nativePicker) openAudio(dir string, done func(string, error)) {
 	go func() {
-		paths, err := zenity.SelectFileMultiple(zenity.Title("Import samples"), inDir(dir), audioFilter)
-		fyne.Do(func() { done(paths, notCancelled(err)) })
+		path, err := zenity.SelectFile(zenity.Title("Import sample"), inDir(dir), audioFilter)
+		fyne.Do(func() { done(path, notCancelled(err)) })
 	}()
 }
 
@@ -86,7 +86,7 @@ func (nativePicker) openFolder(dir string, done func(string, error)) {
 	}()
 }
 
-// fynePicker uses Fyne's own dialogs: one file at a time.
+// fynePicker uses Fyne's own dialogs.
 type fynePicker struct{ win fyne.Window }
 
 // startIn points a Fyne dialog at dir when it exists.
@@ -99,14 +99,14 @@ func startIn(d *dialog.FileDialog, dir string) {
 	}
 }
 
-func (f fynePicker) openAudio(dir string, done func([]string, error)) {
+func (f fynePicker) openAudio(dir string, done func(string, error)) {
 	d := dialog.NewFileOpen(func(r fyne.URIReadCloser, err error) {
 		if err != nil || r == nil {
-			done(nil, err)
+			done("", err)
 			return
 		}
 		r.Close()
-		done([]string{r.URI().Path()}, nil)
+		done(r.URI().Path(), nil)
 	}, f.win)
 	d.SetFilter(storage.NewExtensionFileFilter([]string{".wav", ".WAV", ".aif", ".AIF", ".aiff", ".AIFF", ".aifc", ".AIFC"}))
 	startIn(d, dir)

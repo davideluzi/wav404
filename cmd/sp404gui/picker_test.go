@@ -14,12 +14,12 @@ import (
 // decide when and how the dialog closes.
 type fakePicker struct {
 	dir, name string
-	openDone  func([]string, error)
+	openDone  func(string, error)
 	saveDone  func(string, error)
 	dirDone   func(string, error)
 }
 
-func (f *fakePicker) openAudio(dir string, done func([]string, error)) {
+func (f *fakePicker) openAudio(dir string, done func(string, error)) {
 	f.dir, f.openDone = dir, done
 }
 
@@ -44,19 +44,22 @@ func fixture(name string) string {
 	return p
 }
 
-func TestImportSeveralFilesFromPicker(t *testing.T) {
+// The picker imports exactly one file, into the selected pad only.
+func TestImportOneFileFromPicker(t *testing.T) {
 	g, fp, root := pickerGUI(t)
+	a2Before := g.card.Info.Pads[1]
 	test.Tap(g.tiles[0]) // A1
 	test.Tap(g.importBtn)
-	fp.openDone([]string{fixture("s16.wav"), fixture("s24.aif")}, nil)
+	fp.openDone(fixture("s24.aif"), nil)
 
 	c, _ := sp404sx.OpenCard(root)
-	for _, pad := range []int{0, 1} { // A1, A2
-		if p := c.Info.Pads[pad]; p.Empty() || p.OriginalTempo != 890 {
-			t.Errorf("pad %s after import = %+v", sp404sx.PadName(pad), p)
-		}
+	if p := c.Info.Pads[0]; p.Empty() || p.OriginalTempo != 890 {
+		t.Errorf("A1 after import = %+v", p)
 	}
-	if got := g.prefs().String(prefImportDir); got != filepath.Dir(fixture("s16.wav")) {
+	if c.Info.Pads[1] != a2Before {
+		t.Error("A2 changed: the import spilled into the next pad")
+	}
+	if got := g.prefs().String(prefImportDir); got != filepath.Dir(fixture("s24.aif")) {
 		t.Errorf("remembered import folder = %q", got)
 	}
 }
@@ -78,7 +81,7 @@ func TestImportTargetFixedWhenDialogOpens(t *testing.T) {
 	test.Tap(g.tiles[0]) // A1
 	test.Tap(g.importBtn)
 	test.Tap(g.tiles[9]) // user clicks A10 while the dialog is open
-	fp.openDone([]string{fixture("s16.wav")}, nil)
+	fp.openDone(fixture("s16.wav"), nil)
 	c, _ := sp404sx.OpenCard(root)
 	if c.Info.Pads[0].Empty() {
 		t.Error("file not imported into A1")
@@ -93,7 +96,7 @@ func TestCancelledImportChangesNothing(t *testing.T) {
 	before, _ := os.Stat(filepath.Join(root, "ROLAND", "SP-404SX", "SMPL", "PAD_INFO.BIN"))
 	test.Tap(g.tiles[0])
 	test.Tap(g.importBtn)
-	fp.openDone(nil, nil)
+	fp.openDone("", nil)
 	after, _ := os.Stat(filepath.Join(root, "ROLAND", "SP-404SX", "SMPL", "PAD_INFO.BIN"))
 	if !os.SameFile(before, after) {
 		t.Error("cancelled import wrote to the card")
