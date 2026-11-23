@@ -8,26 +8,30 @@ import (
 	"strings"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/davideluzi/wav404/sp404sx"
 )
 
 // padPanel edits the settings of the selected pad. Every change is written
-// to the card at once (the volume slider when it is released).
+// to the card at once (the volume knob when it is released).
 type padPanel struct {
-	volume                    *widget.Slider
-	volumeLabel               *widget.Label
-	loop, gate, reverse, lofi *widget.Check
-	bpm                       *widget.Entry
-	origBPM                   *widget.Label
-	resetBPM                  *widget.Button
+	volume                    *hwKnob
+	volumeLabel               *canvas.Text
+	loop, gate, reverse, lofi *hwToggle
+	channels                  *hwKey // STEREO / MONO indicator
+	bpmDisplay                *hwDisplay
+	bpm                       *widget.Entry // tempo editor, shown when the display is tapped
+	bpmPopup                  *widget.PopUp
+	origBPM                   *canvas.Text
+	resetBPM                  *hwKey
 	wave                      *waveView
-	trimLabel                 *widget.Label
-	resetTrim                 *widget.Button
+	trimLabel                 *canvas.Text
+	resetTrim                 *hwKey
 	waveIndex                 int // pad whose sample the wave holds, -1 = none
+	waveLoading               bool
 
 	loading  bool        // true while the widgets are being filled in
 	shownPad int         // pad the widgets show: -1 none, panelStale = reload
@@ -36,30 +40,42 @@ type padPanel struct {
 
 const panelStale = -2
 
+func setText(t *canvas.Text, s string) {
+	if t.Text != s {
+		t.Text = s
+		t.Refresh()
+	}
+}
+
 func (g *gui) buildPanel() {
 	g.shownPad, g.waveIndex = panelStale, -1
 	g.wave = newWaveView(g.editTrim)
-	g.trimLabel = widget.NewLabel("")
-	g.resetTrim = widget.NewButtonWithIcon("Whole sample", theme.ContentUndoIcon(), func() {
-		g.editTrim(0, g.wave.frames())
-	})
-	g.volume = widget.NewSlider(0, 127)
-	g.volume.Step = 1
-	g.volumeLabel = widget.NewLabel("")
-	g.volume.OnChanged = func(v float64) { g.volumeLabel.SetText(strconv.Itoa(int(v))) }
+	g.trimLabel = silk("", 11, hwSilk)
+	g.resetTrim = newHWKey("WHOLE", 11, 6)
+	g.resetTrim.onTap = func() { g.editTrim(0, g.wave.frames()) }
+
+	g.volume = newHWKnob(0, 127)
+	g.volumeLabel = silk("", 14, hwSilk)
+	g.volume.OnChanged = func(v float64) { setText(g.volumeLabel, strconv.Itoa(int(v))) }
 	g.volume.OnChangeEnded = func(v float64) {
 		g.editPad(func(p *sp404sx.Pad) { p.Volume = uint8(v) })
 	}
-	check := func(label string, set func(*sp404sx.Pad, bool)) *widget.Check {
-		return widget.NewCheck(label, func(on bool) { g.editPad(func(p *sp404sx.Pad) { set(p, on) }) })
+	toggle := func(label string, set func(*sp404sx.Pad, bool)) *hwToggle {
+		return newHWToggle(label, func(on bool) { g.editPad(func(p *sp404sx.Pad) { set(p, on) }) })
 	}
-	g.loop = check("Loop", func(p *sp404sx.Pad, on bool) { p.Loop = on })
-	g.gate = check("Gate", func(p *sp404sx.Pad, on bool) { p.Gate = on })
-	g.reverse = check("Reverse", func(p *sp404sx.Pad, on bool) { p.Reverse = on })
-	g.lofi = check("Lo-fi", func(p *sp404sx.Pad, on bool) { p.Lofi = on })
+	g.lofi = toggle("LO-FI", func(p *sp404sx.Pad, on bool) { p.Lofi = on })
+	g.gate = toggle("GATE", func(p *sp404sx.Pad, on bool) { p.Gate = on })
+	g.loop = toggle("LOOP", func(p *sp404sx.Pad, on bool) { p.Loop = on })
+	g.reverse = toggle("REVERSE", func(p *sp404sx.Pad, on bool) { p.Reverse = on })
+	g.channels = newHWKey("STEREO", 12, 7)
 
+	g.bpmDisplay = newHWDisplay(4)
+	g.bpmDisplay.onTap = g.editBPM
 	g.bpm = widget.NewEntry()
 	g.bpm.OnSubmitted = func(text string) {
+		if g.bpmPopup != nil {
+			g.bpmPopup.Hide()
+		}
 		tempo, err := parseBPM(text)
 		if err != nil {
 			g.shownPad = panelStale // restore the saved value
@@ -69,22 +85,25 @@ func (g *gui) buildPanel() {
 		}
 		g.editPad(func(p *sp404sx.Pad) { p.UserTempo = tempo })
 	}
-	g.origBPM = widget.NewLabel("")
-	g.resetBPM = widget.NewButtonWithIcon("", theme.HistoryIcon(), func() {
+	g.origBPM = silk("", 11, hwSilkDim)
+	g.resetBPM = newHWKey("ORIG", 10, 5)
+	g.resetBPM.onTap = func() {
 		g.editPad(func(p *sp404sx.Pad) { p.UserTempo = p.OriginalTempo })
-	})
+	}
 }
 
-func (g *gui) panelContent() fyne.CanvasObject {
-	bpmBox := container.NewGridWrap(fyne.NewSize(80, g.bpm.MinSize().Height), g.bpm)
-	return container.NewVBox(
-		g.wave,
-		container.NewBorder(nil, nil, nil, g.resetTrim, g.trimLabel),
-		container.NewBorder(nil, nil, widget.NewLabel("Volume"), g.volumeLabel, g.volume),
-		container.NewHBox(g.loop, g.gate, g.reverse, g.lofi,
-			widget.NewSeparator(),
-			widget.NewLabel("BPM"), bpmBox, g.resetBPM, g.origBPM),
-	)
+// editBPM opens a small tempo field over the display; Enter saves.
+func (g *gui) editBPM() {
+	if g.bpm.Disabled() {
+		return
+	}
+	if g.bpmPopup == nil {
+		box := container.NewBorder(nil, nil, widget.NewLabel("BPM"), nil, g.bpm)
+		g.bpmPopup = widget.NewPopUp(container.NewGridWrap(fyne.NewSize(200, box.MinSize().Height), box), g.win.Canvas())
+	}
+	pos := fyne.CurrentApp().Driver().AbsolutePositionForObject(g.bpmDisplay)
+	g.bpmPopup.ShowAtPosition(pos.AddXY(10, g.bpmDisplay.Size().Height-6))
+	g.win.Canvas().Focus(g.bpm)
 }
 
 // parseBPM reads "130" or "130.5" as BPM × 10.
@@ -127,29 +146,45 @@ func (g *gui) loadPanel() {
 		p.Gate = false
 	}
 	g.volume.SetValue(float64(p.Volume))
-	g.volumeLabel.SetText(strconv.Itoa(int(p.Volume)))
+	setText(g.volumeLabel, strconv.Itoa(int(p.Volume)))
 	g.loop.SetChecked(p.Loop)
 	g.gate.SetChecked(p.Gate)
 	g.reverse.SetChecked(p.Reverse)
 	g.lofi.SetChecked(p.Lofi)
+	g.channels.label = map[bool]string{true: "STEREO", false: "MONO"}[p.Channels == 2]
+	g.channels.lit = index >= 0
+	g.channels.Refresh()
 	if index < 0 {
 		g.bpm.SetText("")
-		g.origBPM.SetText("")
+		g.bpmDisplay.setText("")
+		setText(g.volumeLabel, "")
+		setText(g.origBPM, "")
 		return
 	}
-	g.bpm.SetText(fmt.Sprintf("%.1f", float64(p.UserTempo)/10))
-	g.origBPM.SetText(fmt.Sprintf("original %.1f", float64(p.OriginalTempo)/10))
+	tempo := fmt.Sprintf("%.1f", float64(p.UserTempo)/10)
+	g.bpm.SetText(tempo)
+	g.bpmDisplay.setText(tempo)
+	setText(g.origBPM, fmt.Sprintf("ORIGINAL %.1f", float64(p.OriginalTempo)/10))
 }
 
 // loadWave shows pad index (-1: none) with its trim. The sample file is
 // read again only when the pad changes or after invalidatePanel.
 func (g *gui) loadWave(index int, p sp404sx.Pad) {
 	if index != g.waveIndex {
-		g.waveIndex = index
-		g.wave.sample = nil
+		g.waveIndex, g.wave.sample, g.waveLoading = index, nil, false
 		if index >= 0 {
-			if s, err := g.card.ReadSample(index); err == nil {
+			if s, ok := g.cachedSample(index); ok {
 				g.wave.sample = s
+			} else {
+				g.waveLoading = true
+				g.fetchSample(g.card, index, func(s *sp404sx.Sample, err error) {
+					if g.waveIndex != index {
+						return // another pad was selected meanwhile
+					}
+					g.wave.sample, g.waveLoading = s, false
+					g.shownPad = panelStale
+					g.refresh()
+				})
 			}
 		}
 	}
@@ -157,20 +192,24 @@ func (g *gui) loadWave(index int, p sp404sx.Pad) {
 	switch {
 	case index < 0:
 		g.wave.setSample(nil, 0, 0)
-		g.trimLabel.SetText("")
+		setText(g.trimLabel, "")
+		g.resetTrim.Disable()
+		return
+	case g.waveLoading:
+		g.wave.setSample(nil, 0, 0)
+		setText(g.trimLabel, "LOADING SAMPLE…")
 		g.resetTrim.Disable()
 		return
 	case s == nil:
 		g.wave.setSample(nil, 0, 0)
-		g.trimLabel.SetText("Sample file not found or unreadable on the card.")
+		setText(g.trimLabel, "SAMPLE FILE NOT FOUND ON THE CARD")
 		g.resetTrim.Disable()
 		return
 	}
 	start, end := p.TrimFrames()
 	g.wave.setSample(s, start, end)
 	sec := func(f int) float64 { return float64(f) / sp404sx.SampleRate }
-	g.trimLabel.SetText(fmt.Sprintf("Start %.3f s   End %.3f s   Length %.3f s",
-		sec(start), sec(end), sec(end-start)))
+	setText(g.trimLabel, fmt.Sprintf("START %.3f   END %.3f   LENGTH %.3f", sec(start), sec(end), sec(end-start)))
 	g.resetTrim.Enable()
 }
 

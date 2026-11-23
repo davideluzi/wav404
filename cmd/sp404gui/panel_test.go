@@ -90,11 +90,10 @@ func TestToggleSavesImmediately(t *testing.T) {
 func TestVolumeSavesOnRelease(t *testing.T) {
 	g, root := newTestGUI(t)
 	j5 := selectJ5(g)
-	// drag the knob to about the middle, then release
-	mid := fyne.NewPos(g.volume.Size().Width/2, g.volume.Size().Height/2)
-	g.volume.Dragged(&fyne.DragEvent{PointEvent: fyne.PointEvent{Position: mid}})
+	// drag the knob down, then release
+	g.volume.Dragged(&fyne.DragEvent{Dragged: fyne.NewDelta(0, 40)})
 	dragged := int(g.volume.Value)
-	if dragged == 127 || g.volumeLabel.Text != strconv.Itoa(dragged) {
+	if dragged >= 127 || g.volumeLabel.Text != strconv.Itoa(dragged) {
 		t.Fatalf("during drag: value %d, label %q", dragged, g.volumeLabel.Text)
 	}
 	if reopenPad(t, root, j5).Volume != 127 {
@@ -187,7 +186,7 @@ func TestWaveEmptyForEmptyPad(t *testing.T) {
 func TestWaveMissingFile(t *testing.T) {
 	g, _ := newTestGUI(t)
 	test.Tap(g.tiles[1]) // A2: assigned in PAD_INFO, but no file on the fake card
-	if g.wave.sample != nil || !strings.Contains(g.trimLabel.Text, "not found") {
+	if g.wave.sample != nil || !strings.Contains(strings.ToLower(g.trimLabel.Text), "not found") {
 		t.Errorf("wave %v, label %q", g.wave.sample != nil, g.trimLabel.Text)
 	}
 }
@@ -210,5 +209,45 @@ func TestWaveReloadsAfterImport(t *testing.T) {
 	}
 	if g.wave.sample == before || g.wave.sample.PCM[1000] != 0 {
 		t.Error("waveform still shows the old sample")
+	}
+}
+
+func TestBPMDisplay(t *testing.T) {
+	g, root := newTestGUI(t)
+	j5 := selectJ5(g)
+	if g.bpmDisplay.text != "89.0" {
+		t.Errorf("display shows %q", g.bpmDisplay.text)
+	}
+	test.Tap(g.bpmDisplay)
+	if g.bpmPopup == nil || !g.bpmPopup.Visible() {
+		t.Fatal("tapping the display did not open the tempo editor")
+	}
+	g.bpm.SetText("120")
+	g.bpm.OnSubmitted("120")
+	if g.bpmPopup.Visible() {
+		t.Error("editor still open after Enter")
+	}
+	if g.bpmDisplay.text != "120.0" || reopenPad(t, root, j5).UserTempo != 1200 {
+		t.Errorf("display %q, saved %d", g.bpmDisplay.text, reopenPad(t, root, j5).UserTempo)
+	}
+	test.Tap(g.tiles[11]) // J12: empty
+	if g.bpmDisplay.text != "" {
+		t.Errorf("empty pad: display shows %q", g.bpmDisplay.text)
+	}
+	test.Tap(g.bpmDisplay)
+	if g.bpmPopup.Visible() {
+		t.Error("tempo editor opened for an empty pad")
+	}
+}
+
+func TestChannelsIndicator(t *testing.T) {
+	g, _ := newTestGUI(t)
+	test.Tap(g.tiles[9]) // A10 mono
+	if g.channels.label != "MONO" || !g.channels.lit {
+		t.Errorf("A10: %q lit=%v", g.channels.label, g.channels.lit)
+	}
+	selectJ5(g)
+	if g.channels.label != "STEREO" {
+		t.Errorf("J5: %q", g.channels.label)
 	}
 }

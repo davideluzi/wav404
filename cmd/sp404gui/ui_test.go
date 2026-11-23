@@ -20,9 +20,10 @@ func newTestGUI(t *testing.T) (*gui, string) {
 	a := test.NewTempApp(t)
 	w := a.NewWindow("test")
 	g := newGUI(w)
-	g.confirm = func(_, _ string, ok func()) { ok() }
+	g.confirm = func(_, _, _ string, ok func()) { ok() }
 	g.runTask = func(_ string, task func() error, done func(error)) { done(task()) }
 	g.player = &fakePlayer{}
+	g.async = func(work, done func()) { work(); done() } // reads complete at once
 	w.SetContent(g.content())
 	w.Resize(fyne.NewSize(800, 600))
 	root := fakeCard(t)
@@ -113,8 +114,8 @@ func TestDoubleTapPlaysPad(t *testing.T) {
 	if g.playing != sp404sx.PadIndex('A', 10) || g.selected != g.playing {
 		t.Errorf("playing=%d selected=%d", g.playing, g.selected)
 	}
-	if g.playBtn.Text != "Stop" || !g.tiles[9].playing {
-		t.Errorf("button %q, tile playing %v", g.playBtn.Text, g.tiles[9].playing)
+	if g.playBtn.label != "STOP" || !g.tiles[9].playing {
+		t.Errorf("button %q, tile playing %v", g.playBtn.label, g.tiles[9].playing)
 	}
 }
 
@@ -127,8 +128,8 @@ func TestPlayButtonToggles(t *testing.T) {
 		t.Fatal("not playing after Play")
 	}
 	test.Tap(g.playBtn)
-	if g.playing >= 0 || fp.stopped == 0 || g.playBtn.Text != "Play" {
-		t.Errorf("after Stop: playing=%d stopped=%d button=%q", g.playing, fp.stopped, g.playBtn.Text)
+	if g.playing >= 0 || fp.stopped == 0 || g.playBtn.label != "PLAY" {
+		t.Errorf("after Stop: playing=%d stopped=%d button=%q", g.playing, fp.stopped, g.playBtn.label)
 	}
 }
 
@@ -137,7 +138,7 @@ func TestPlaybackEndResetsState(t *testing.T) {
 	fp := g.player.(*fakePlayer)
 	doubleTap(g.tiles[9])
 	fp.onEnd()
-	if g.playing >= 0 || g.playBtn.Text != "Play" || g.tiles[9].playing {
+	if g.playing >= 0 || g.playBtn.label != "PLAY" || g.tiles[9].playing {
 		t.Error("state not reset when playback ended")
 	}
 }
@@ -187,7 +188,7 @@ func doubleTap(p *padTile) {
 // A widget implementing fyne.DoubleTappable gets every single tap delayed
 // by the system double-click interval: selection would feel slow.
 func TestPadTileIsNotDoubleTappable(t *testing.T) {
-	var o fyne.CanvasObject = newPadTile(func() {}, func() {})
+	var o fyne.CanvasObject = newPadTile(1, func() {}, func() {})
 	if _, ok := o.(fyne.DoubleTappable); ok {
 		t.Error("padTile implements fyne.DoubleTappable: single taps would be delayed")
 	}

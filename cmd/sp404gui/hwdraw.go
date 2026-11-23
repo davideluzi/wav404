@@ -5,9 +5,14 @@ package main
 // drawn in code (no bitmaps), so the look is the same on every platform.
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"math"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // Hardware palette: graphite metal, dark rubber, amber light.
@@ -15,6 +20,7 @@ var (
 	hwMetal      = color.NRGBA{0x2a, 0x2d, 0x32, 0xff}
 	hwRubber     = color.NRGBA{0x3a, 0x3e, 0x45, 0xff}
 	hwRubberFull = color.NRGBA{0x52, 0x57, 0x5f, 0xff}
+	hwPadEmpty   = color.NRGBA{0x30, 0x33, 0x39, 0xff} // a pad with no sample
 	hwAmber      = color.NRGBA{0xff, 0xb0, 0x20, 0xff}
 	hwAmberDeep  = color.NRGBA{0xe0, 0x88, 0x00, 0xff}
 	hwAmberDim   = color.NRGBA{0x4a, 0x36, 0x14, 0xff}
@@ -70,7 +76,13 @@ func sdRoundRect(px, py, cx, cy, hw, hh, r float64) float64 {
 // fillShape paints every pixel inside sd (distance < 0) with col(x, y),
 // anti-aliased over one pixel.
 func fillShape(img *image.NRGBA, sd func(x, y float64) float64, col func(x, y float64) color.NRGBA) {
-	b := img.Rect
+	fillShapeIn(img, img.Rect, sd, col)
+}
+
+// fillShapeIn is fillShape limited to the pixels of rect (the shape's
+// bounding box), for small shapes in a large image.
+func fillShapeIn(img *image.NRGBA, rect image.Rectangle, sd func(x, y float64) float64, col func(x, y float64) color.NRGBA) {
+	b := rect.Intersect(img.Rect)
 	for y := b.Min.Y; y < b.Max.Y; y++ {
 		for x := b.Min.X; x < b.Max.X; x++ {
 			px, py := float64(x)+0.5, float64(y)+0.5
@@ -104,22 +116,28 @@ func drawBrushedMetal(img *image.NRGBA) {
 	}
 }
 
-// keyStyle describes a rubber key or pad.
+// keyStyle describes a rubber key or pad. Radius and inset are fractions
+// of the key's smaller side, so the look is the same at every resolution
+// (and a vector outline drawn over it lines up).
 type keyStyle struct {
 	face   color.NRGBA // base colour of the key top
 	radius float64
-	ring   *color.NRGBA // optional outline (selection)
-	glow   float64      // 0..1 amber halo around the key (lit / playing)
+	inset  float64
+	glow   float64 // 0..1 amber halo around the key (lit / playing)
 }
 
+// faceRect returns the inset and corner radius of the key face for a key
+// whose smaller side is m (pixels or points).
+func (s keyStyle) faceRect(m float64) (inset, radius float64) { return s.inset * m, s.radius * m }
+
 // drawKey renders a rubber key filling the image: a recess shadow, a
-// slightly domed face with a top highlight, an optional ring and glow.
+// slightly domed face with a top highlight, and an optional glow.
 func drawKey(img *image.NRGBA, s keyStyle) {
 	w, h := float64(img.Rect.Dx()), float64(img.Rect.Dy())
-	inset := 4.0
+	inset, r := s.faceRect(math.Min(w, h))
 	cx, cy := w/2, h/2
 	hw, hh := w/2-inset, h/2-inset
-	r := math.Min(s.radius, math.Min(hw, hh))
+	r = math.Min(r, math.Min(hw, hh))
 
 	if s.glow > 0 { // halo outside the key
 		for y := 0; y < int(h); y++ {
@@ -146,12 +164,6 @@ func drawKey(img *image.NRGBA, s keyStyle) {
 	fillShape(img, func(x, y float64) float64 {
 		return math.Max(sdRoundRect(x, y, cx, cy, hw, hh, r), -(sdRoundRect(x, y, cx, cy+1.2, hw, hh, r)))
 	}, func(x, y float64) color.NRGBA { return color.NRGBA{255, 255, 255, 0x30} })
-	if s.ring != nil {
-		fillShape(img, func(x, y float64) float64 {
-			d := sdRoundRect(x, y, cx, cy, hw, hh, r)
-			return math.Abs(d+1.2) - 1.2
-		}, func(x, y float64) color.NRGBA { return *s.ring })
-	}
 }
 
 // Seven-segment layout: a, b, c, d, e, f, g.
@@ -222,7 +234,10 @@ func drawSevenSeg(img *image.NRGBA, text string, cells int) {
 			if on[k] {
 				col = hwAmber
 			}
-			fillShape(img, func(x, y float64) float64 {
+			lean := dh * slant
+			box := image.Rect(int(ox+sg[0]-sg[2]-2), int(pad+sg[1]-sg[3]-2),
+				int(ox+sg[0]+sg[2]+lean+3), int(pad+sg[1]+sg[3]+3))
+			fillShapeIn(img, box, func(x, y float64) float64 {
 				lx := x - ox - (dh-(y-pad))*slant // undo the lean
 				return sdRoundRect(lx, y-pad, sg[0], sg[1], sg[2], sg[3], t/2)
 			}, func(x, y float64) color.NRGBA { return col })
@@ -231,39 +246,19 @@ func drawSevenSeg(img *image.NRGBA, text string, cells int) {
 		if c.dot {
 			dotCol = hwAmber
 		}
-		fillShape(img, func(x, y float64) float64 {
-			return math.Hypot(x-(ox+dw+gap*0.45), y-(pad+dh-t/2)) - t*0.55
+		dx, dy := ox+dw+gap*0.45, pad+dh-t/2
+		fillShapeIn(img, image.Rect(int(dx-t-2), int(dy-t-2), int(dx+t+3), int(dy+t+3)), func(x, y float64) float64 {
+			return math.Hypot(x-dx, y-dy) - t*0.55
 		}, func(x, y float64) color.NRGBA { return dotCol })
 	}
 }
 
-// drawKnob renders a knob for value 0..1 over a 270° sweep, with an amber
-// arc showing the value.
-func drawKnob(img *image.NRGBA, value float64) {
+// drawKnobBody renders the knob cap with its shadow; the value arc and
+// the pointer are vector objects drawn over it.
+func drawKnobBody(img *image.NRGBA) {
 	w, h := float64(img.Rect.Dx()), float64(img.Rect.Dy())
 	cx, cy := w/2, h/2
-	rOuter := math.Min(w, h)/2 - 2
-	rKnob := rOuter * 0.72
-	start, sweep := math.Pi*0.75, math.Pi*1.5 // from 7:30 clockwise to 4:30
-	angleOf := func(x, y float64) float64 {
-		a := math.Atan2(y-cy, x-cx) - start
-		for a < 0 {
-			a += 2 * math.Pi
-		}
-		return a
-	}
-	arc := func(limit float64, col color.NRGBA) {
-		fillShape(img, func(x, y float64) float64 {
-			d := math.Abs(math.Hypot(x-cx, y-cy)-rOuter*0.9) - rOuter*0.06
-			if angleOf(x, y) > limit {
-				return 1
-			}
-			return d
-		}, func(x, y float64) color.NRGBA { return col })
-	}
-	arc(sweep, hwAmberDim)
-	arc(sweep*clamp01(value), hwAmber)
-	// shadow, body, rim highlight
+	rKnob := (math.Min(w, h)/2 - 2) * knobCapRatio
 	fillShape(img, func(x, y float64) float64 { return math.Hypot(x-cx, y-cy-2) - rKnob },
 		func(x, y float64) color.NRGBA { return color.NRGBA{0, 0, 0, 0xa0} })
 	fillShape(img, func(x, y float64) float64 { return math.Hypot(x-cx, y-cy) - rKnob },
@@ -276,17 +271,16 @@ func drawKnob(img *image.NRGBA, value float64) {
 			t := (y - (cy - rKnob)) / (2 * rKnob)
 			return shade(color.NRGBA{0x2c, 0x2f, 0x34, 0xff}, 0.12-0.2*t)
 		})
-	// indicator line
-	a := start + sweep*clamp01(value)
-	ex, ey := cx+math.Cos(a)*rKnob*0.68, cy+math.Sin(a)*rKnob*0.68
-	sx, sy := cx+math.Cos(a)*rKnob*0.25, cy+math.Sin(a)*rKnob*0.25
-	fillShape(img, func(x, y float64) float64 {
-		// distance to segment s–e
-		vx, vy := ex-sx, ey-sy
-		t := clamp01(((x-sx)*vx + (y-sy)*vy) / (vx*vx + vy*vy))
-		return math.Hypot(x-(sx+vx*t), y-(sy+vy*t)) - 2
-	}, func(x, y float64) color.NRGBA { return hwSilk })
 }
+
+// Knob geometry, as fractions of the knob's outer radius.
+const (
+	knobCapRatio   = 0.72 // cap radius
+	knobArcOuter   = 0.96 // value arc, outer edge
+	knobArcInner   = 0.84 // value arc, inner edge
+	knobStartAngle = -135 // degrees from 12 o'clock, clockwise
+	knobSweep      = 270
+)
 
 // drawScrew renders a small panel screw with a slot.
 func drawScrew(img *image.NRGBA) {
@@ -313,4 +307,131 @@ func drawScreen(img *image.NRGBA) {
 		func(x, y float64) color.NRGBA { return color.NRGBA{0, 0, 0, 0xb0} })
 	fillShape(img, func(x, y float64) float64 { return sdRoundRect(x, y, w/2, h/2+1, w/2-4, h/2-4, 6) },
 		func(x, y float64) color.NRGBA { return shade(hwGlass, 0.04*(1-y/h)) })
+}
+
+// Drawn images are cached: a key's look depends only on its size and state,
+// and the panel shows few distinct states, so most refreshes cost nothing.
+// The cache is bounded in bytes; when full it starts over.
+var (
+	cacheMu    sync.Mutex
+	drawCache  = map[string]*image.NRGBA{}
+	cacheBytes int
+	// For tests: images drawn while the driver was waiting for them (the
+	// cost a user feels), in total and per kind. Background prewarming is
+	// counted apart.
+	draws        = map[string]int64{}
+	drawCount    atomic.Int64
+	prewarmCount atomic.Int64
+)
+
+const maxCacheBytes = 96 << 20
+
+func cacheKey(key string, w, h int) string { return fmt.Sprintf("%s|%dx%d", key, w, h) }
+
+// cached returns the w×h image for key, drawing it on first use. Callers
+// must not modify the returned image.
+func cached(key string, w, h int, draw func(*image.NRGBA)) *image.NRGBA {
+	return cachedDraw(key, w, h, draw, false)
+}
+
+func cachedDraw(key string, w, h int, draw func(*image.NRGBA), background bool) *image.NRGBA {
+	k := cacheKey(key, w, h)
+	cacheMu.Lock()
+	img, ok := drawCache[k]
+	cacheMu.Unlock()
+	if ok {
+		return img
+	}
+	img = image.NewNRGBA(image.Rect(0, 0, w, h))
+	draw(img)
+	cacheMu.Lock()
+	if cacheBytes+len(img.Pix) > maxCacheBytes {
+		clear(drawCache)
+		cacheBytes = 0
+	}
+	drawCache[k] = img
+	cacheBytes += len(img.Pix)
+	if background {
+		prewarmCount.Add(1)
+	} else {
+		drawCount.Add(1)
+		draws[strings.SplitN(key, "|", 2)[0]]++
+	}
+	cacheMu.Unlock()
+	return img
+}
+
+func isCached(key string, w, h int) bool {
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+	_, ok := drawCache[cacheKey(key, w, h)]
+	return ok
+}
+
+// drawsOf counts the images of one kind ("key", "seg", …) drawn so far.
+func drawsOf(kind string) int64 {
+	cacheMu.Lock()
+	defer cacheMu.Unlock()
+	return draws[kind]
+}
+
+// key identifies a keyStyle in the image cache.
+func (s keyStyle) key() string {
+	return fmt.Sprintf("key|%v|%.3f|%.3f|%.2f", s.face, s.radius, s.inset, s.glow)
+}
+
+// A variant is another look of a raster, drawn ahead of time.
+type variant struct {
+	key  string
+	draw func(*image.NRGBA)
+}
+
+// Variants are prepared in the background once the UI has been quiet for
+// prewarmDelay, at the exact pixel size the driver last asked for, so that
+// the first press of a key or pad finds its image ready. While the window
+// is being resized only the final size is prepared.
+var prewarm = struct {
+	sync.Mutex
+	pending map[any]prewarmJob
+	timer   *time.Timer
+}{pending: map[any]prewarmJob{}}
+
+type prewarmJob struct {
+	w, h     int
+	variants []variant
+}
+
+const prewarmDelay = 200 * time.Millisecond
+
+func notePrewarm(owner any, w, h int, vs []variant) {
+	prewarm.Lock()
+	defer prewarm.Unlock()
+	prewarm.pending[owner] = prewarmJob{w, h, vs}
+	if prewarm.timer == nil {
+		prewarm.timer = time.AfterFunc(prewarmDelay, runPrewarm)
+	} else {
+		prewarm.timer.Reset(prewarmDelay)
+	}
+}
+
+func runPrewarm() {
+	prewarm.Lock()
+	jobs := prewarm.pending
+	prewarm.pending = map[any]prewarmJob{}
+	prewarm.Unlock()
+	for _, j := range jobs {
+		for _, v := range j.variants {
+			cachedDraw(v.key, j.w, j.h, v.draw, true)
+		}
+	}
+}
+
+// flushPrewarm prepares the pending variants now (tests).
+func flushPrewarm() {
+	prewarm.Lock()
+	if prewarm.timer != nil {
+		prewarm.timer.Stop()
+	}
+	prewarm.Unlock()
+	runPrewarm()
 }

@@ -7,16 +7,11 @@ import (
 	"fyne.io/fyne/v2/theme"
 )
 
-// Palette: flat graphite with a teal accent. Deliberately unlike Roland's
-// red, glowing, numbered pads.
+// Colours of the standard widgets (top strip, dialogs). The panel itself
+// uses the hardware palette in hwdraw.go; the accent is the same amber.
 var (
 	colBackground = color.NRGBA{0x12, 0x14, 0x17, 0xff}
-	colPadEmpty   = color.NRGBA{0x1b, 0x1f, 0x24, 0xff}
-	colPadFull    = color.NRGBA{0x26, 0x2d, 0x36, 0xff}
-	colPadPlaying = color.NRGBA{0x1d, 0x4a, 0x46, 0xff} // dark teal
-	colAccent     = color.NRGBA{0x35, 0xc2, 0xb0, 0xff}
 	colText       = color.NRGBA{0xe6, 0xe9, 0xee, 0xff}
-	colMuted      = color.NRGBA{0x7d, 0x85, 0x90, 0xff}
 )
 
 type wavTheme struct{}
@@ -26,7 +21,7 @@ func (wavTheme) Color(n fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
 	case theme.ColorNameBackground:
 		return colBackground
 	case theme.ColorNamePrimary, theme.ColorNameFocus:
-		return colAccent
+		return hwAmber
 	case theme.ColorNameForeground:
 		return colText
 	}

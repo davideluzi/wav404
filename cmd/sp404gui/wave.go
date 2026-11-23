@@ -40,7 +40,8 @@ func peaks(s *sp404sx.Sample, columns int) []peak {
 // the trim range, and the markers.
 type wavePalette struct{ bg, in, out, marker color.Color }
 
-var flatWave = wavePalette{colPadEmpty, colAccent, colMuted, colText}
+// screenWave: amber trace on dark glass, like the panel's display.
+var screenWave = wavePalette{hwGlass, hwAmber, hwAmberDim, hwSilk}
 
 // waveView draws a sample with its trim range. Dragging moves the marker
 // nearest to where the drag started; onTrim runs when the drag ends.
@@ -59,7 +60,7 @@ type waveView struct {
 }
 
 func newWaveView(onTrim func(start, end int)) *waveView {
-	w := &waveView{onTrim: onTrim, pal: flatWave}
+	w := &waveView{onTrim: onTrim, pal: screenWave}
 	w.ExtendBaseWidget(w)
 	return w
 }

@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -29,52 +29,46 @@ type gui struct {
 	playGen  int // identifies the current playback; stale end callbacks are ignored
 	player   audioPlayer
 	picker   picker
+	sampleLoader
 
 	tiles                          [sp404sx.PadsPerBank]*padTile
-	banks                          *widget.RadioGroup
+	banks                          *bankSelector
 	cards                          *widget.Select
-	info                           *widget.Label
-	trim                           *widget.Check
+	info                           *canvas.Text
+	trim                           *hwToggle // export only the trimmed part
 	importBtn, exportBtn, clearBtn *widget.Button
-	playBtn                        *widget.Button
+	playBtn                        *hwKey
 	padPanel
 
 	// replaceable in tests
-	confirm func(title, message string, ok func())
+	confirm func(title, message, action string, ok func())
 	runTask func(label string, task func() error, done func(error))
 }
 
 func newGUI(w fyne.Window) *gui {
 	g := &gui{win: w, selected: -1, playing: -1, player: &otoPlayer{},
 		picker: choosePicker(w, zenity.IsAvailable())}
-	g.confirm = func(title, message string, ok func()) {
-		dialog.ShowConfirm(title, message, func(yes bool) {
+	// a custom dialog: no question-mark icon, and the button says what it does
+	g.confirm = func(title, message, action string, ok func()) {
+		dialog.ShowCustomConfirm(title, action, "Cancel", widget.NewLabel(message), func(yes bool) {
 			if yes {
 				ok()
 			}
 		}, w)
 	}
 	g.runTask = g.runInBackground
+	g.initLoader()
 
 	for i := range g.tiles {
 		index := func() int { return g.bank*sp404sx.PadsPerBank + i }
-		g.tiles[i] = newPadTile(func() { g.selectPad(index()) }, func() { g.playPad(index()) })
+		g.tiles[i] = newPadTile(i+1, func() { g.selectPad(index()) }, func() { g.playPad(index()) })
 	}
-	var letters []string
-	for b := range sp404sx.NumBanks {
-		letters = append(letters, string(rune('A'+b)))
-	}
-	g.banks = widget.NewRadioGroup(letters, func(s string) {
-		if s == "" {
-			g.banks.SetSelected(letters[g.bank]) // a bank is always selected
-			return
-		}
+	g.banks = newBankSelector(func(s string) {
 		g.stopPlayback()
 		g.bank = int(s[0] - 'A')
 		g.selected = -1
 		g.refresh()
 	})
-	g.banks.Horizontal = true
 
 	g.cards = widget.NewSelect(nil, func(root string) {
 		if g.card == nil || g.card.Root != root {
@@ -82,13 +76,14 @@ func newGUI(w fyne.Window) *gui {
 		}
 	})
 	g.cards.PlaceHolder = "No SP-404SX card found"
-	g.info = widget.NewLabel(noCardText)
-	g.info.Wrapping = fyne.TextWrapWord
-	g.trim = widget.NewCheck("Only the trimmed part", nil)
+	g.info = silk(noCardText, 12, hwSilkDim)
+	g.trim = newHWToggle("TRIM ONLY", nil)
+	g.trim.labelSize = 11
 	g.importBtn = widget.NewButtonWithIcon("Import…", theme.DownloadIcon(), g.importDialog)
 	g.exportBtn = widget.NewButtonWithIcon("Export…", theme.UploadIcon(), g.exportDialog)
 	g.clearBtn = widget.NewButtonWithIcon("Clear", theme.DeleteIcon(), g.clearSelected)
-	g.playBtn = widget.NewButtonWithIcon("Play", theme.MediaPlayIcon(), g.togglePlay)
+	g.playBtn = newHWKey("PLAY", 18, 9)
+	g.playBtn.onTap = g.togglePlay
 	g.buildPanel()
 	w.SetOnDropped(g.drop)
 	w.Canvas().SetOnTypedKey(func(e *fyne.KeyEvent) {
@@ -100,20 +95,58 @@ func newGUI(w fyne.Window) *gui {
 	return g
 }
 
+// Design size of the hardware panel; it scales uniformly with the window.
+const panelW, panelH = 1040, 552
+
 func (g *gui) content() fyne.CanvasObject {
 	openFolder := widget.NewButtonWithIcon("Open folder…", theme.FolderOpenIcon(), g.openFolderDialog)
 	rescan := widget.NewButtonWithIcon("", theme.ViewRefreshIcon(), g.scanCards)
-	top := container.NewVBox(
-		container.NewBorder(nil, nil, widget.NewLabel("Card"), container.NewHBox(rescan, openFolder), g.cards),
-		container.NewHBox(widget.NewLabel("Bank"), g.banks),
-	)
-	grid := container.NewGridWithColumns(4)
-	for _, t := range g.tiles {
-		grid.Add(t)
+	strip := container.NewStack(canvas.NewRectangle(colBackground), container.NewPadded(
+		container.NewBorder(nil, nil, silk("CARD", 12, hwSilkDim),
+			container.NewHBox(rescan, openFolder, widget.NewSeparator(), g.importBtn, g.exportBtn, g.clearBtn),
+			g.cards)))
+
+	l := newScaledLayout(fyne.NewSize(panelW, panelH))
+	for _, p := range [][2]float32{{12, 12}, {panelW - 28, 12}, {12, panelH - 28}, {panelW - 28, panelH - 28}} {
+		l.place(staticRaster("screw", drawScrew), p[0], p[1], 16, 16)
 	}
-	actions := container.NewHBox(g.playBtn, g.importBtn, g.exportBtn, g.trim, layout.NewSpacer(), g.clearBtn)
-	bottom := container.NewVBox(g.info, g.panelContent(), widget.NewSeparator(), actions)
-	return container.NewBorder(top, bottom, nil, nil, container.NewPadded(grid))
+	caption := func(text string, x, y float32) { l.place(silk(text, 11, hwSilkDim), x, y, 0, 0) }
+
+	// left: the rows above the pads, as on the hardware
+	caption("SAMPLE MODE", 40, 20)
+	for i, k := range []*hwToggle{g.lofi, g.gate, g.loop, g.reverse} {
+		l.place(k, 40+float32(i)*108, 38, 98, 42)
+	}
+	caption("CHANNELS", 514, 20)
+	l.place(g.channels, 514, 38, 98, 42)
+	caption("BANK", 40, 96)
+	for b, k := range g.banks.keys {
+		l.place(k, 40+float32(b)*57.6, 114, 52, 42)
+	}
+	for i, t := range g.tiles {
+		l.place(t, 34+float32(i%4)*146, 176+float32(i/4)*118, 140, 112)
+	}
+
+	// right: tempo, volume, trim, transport
+	caption("BPM", 660, 20)
+	l.place(g.bpmDisplay, 660, 38, 220, 92)
+	l.place(g.origBPM, 660, 136, 0, 0)
+	l.place(g.resetBPM, 812, 132, 68, 24)
+	caption("VOLUME", 912, 20)
+	l.place(g.volume, 898, 34, 104, 104)
+	l.place(g.volumeLabel, 938, 136, 0, 0)
+	caption("TRIM", 660, 176)
+	l.place(staticRaster("screen", drawScreen), 652, 194, 360, 150)
+	l.place(g.wave, 660, 202, 344, 134)
+	l.place(g.trimLabel, 660, 352, 0, 0)
+	l.place(g.resetTrim, 930, 346, 82, 30)
+	l.place(g.playBtn, 652, 400, 170, 64)
+	caption("EXPORT", 842, 400)
+	l.place(g.trim, 842, 418, 110, 40)
+	l.place(g.info, 660, 496, 0, 0)
+
+	panel := container.NewStack(staticRaster("metal", drawBrushedMetal), container.New(l, l.objects()...))
+	return container.NewBorder(strip, nil, nil, nil, panel)
 }
 
 // scanCards looks for cards on the usual mount points and opens the first.
@@ -144,6 +177,7 @@ func (g *gui) openCard(root string) error {
 	}
 	g.stopPlayback()
 	g.invalidatePanel()
+	g.invalidateSamples()
 	g.card, g.selected = c, -1
 	if !contains(g.cards.Options, root) {
 		g.cards.SetOptions(append(g.cards.Options, root))
@@ -171,7 +205,7 @@ func (g *gui) refresh() {
 		index := g.bank*sp404sx.PadsPerBank + i
 		t.set(tileFor(g.card, index), index == g.selected, index == g.playing)
 	}
-	enable := func(b *widget.Button, on bool) {
+	enable := func(b fyne.Disableable, on bool) {
 		if on {
 			b.Enable()
 		} else {
@@ -185,24 +219,22 @@ func (g *gui) refresh() {
 	enable(g.clearBtn, assigned)
 	g.loadPanel()
 	enable(g.playBtn, assigned || g.playing >= 0)
+	g.playBtn.label, g.playBtn.lit = "PLAY", g.playing >= 0
 	if g.playing >= 0 {
-		g.playBtn.SetText("Stop")
-		g.playBtn.SetIcon(theme.MediaStopIcon())
-	} else {
-		g.playBtn.SetText("Play")
-		g.playBtn.SetIcon(theme.MediaPlayIcon())
+		g.playBtn.label = "STOP"
 	}
+	g.playBtn.Refresh()
 
 	switch {
 	case g.card == nil:
-		g.info.SetText(noCardText)
+		setText(g.info, noCardText)
 	case !hasPad:
-		g.info.SetText("Select a pad, or drop WAV/AIFF files onto a pad.")
+		setText(g.info, "Select a pad, or drop WAV/AIFF files onto a pad.")
 	case g.card.Info.Pads[g.selected].Empty():
-		g.info.SetText(sp404sx.PadName(g.selected) + " is empty: Import… or drop a file onto it.")
+		setText(g.info, sp404sx.PadName(g.selected)+" is empty: Import… or drop a file onto it.")
 	default:
 		t := tileFor(g.card, g.selected)
-		g.info.SetText(strings.TrimSpace(fmt.Sprintf("%s   %s   %s   %s",
+		setText(g.info, strings.TrimSpace(fmt.Sprintf("%s   %s   %s   %s",
 			t.title, sp404sx.SampleFileName(g.selected), t.detail, t.flags)))
 	}
 }
@@ -254,6 +286,7 @@ func (g *gui) importInto(first int, paths []string) {
 			return nil
 		}, func(err error) {
 			g.invalidatePanel()
+			g.invalidateSamples()
 			g.selected = pads[len(pads)-1]
 			g.refresh()
 			g.showError(err)
@@ -264,7 +297,8 @@ func (g *gui) importInto(first int, paths []string) {
 		return
 	}
 	g.confirm("Replace samples?",
-		fmt.Sprintf("These pads already have a sample that will be replaced:\n%s", strings.Join(overwrite, ", ")), run)
+		fmt.Sprintf("These pads already have a sample that will be replaced:\n%s", strings.Join(overwrite, ", ")),
+		"Replace", run)
 }
 
 func (g *gui) prefs() fyne.Preferences { return fyne.CurrentApp().Preferences() }
@@ -307,9 +341,10 @@ func (g *gui) clearSelected() {
 		return
 	}
 	pad := g.selected
-	g.confirm("Clear pad?", fmt.Sprintf("Delete the sample on pad %s from the card?", sp404sx.PadName(pad)), func() {
+	g.confirm("Clear pad?", fmt.Sprintf("Delete the sample on pad %s from the card?", sp404sx.PadName(pad)), "Clear", func() {
 		g.stopPlayback()
 		g.invalidatePanel()
+		g.invalidateSamples()
 		g.showError(g.card.Clear(pad))
 		g.refresh()
 	})
@@ -332,25 +367,31 @@ func (g *gui) playPad(index int) {
 		return
 	}
 	g.stopPlayback()
-	g.selected = index
-	s, err := g.card.ReadSample(index)
-	if err == nil {
-		g.playGen++
-		gen := g.playGen
-		err = g.player.play(previewPCM(s, g.card.Info.Pads[index]), func() {
-			fyne.Do(func() {
-				if gen == g.playGen {
-					g.playing = -1
-					g.refresh()
-				}
+	g.selected, g.playing = index, index // the pad lights up at once
+	g.playGen++
+	gen, card := g.playGen, g.card
+	start := func(s *sp404sx.Sample, err error) {
+		if gen != g.playGen {
+			return // stopped or replaced while the sample was loading
+		}
+		if err == nil {
+			err = g.player.play(previewPCM(s, card.Info.Pads[index]), func() {
+				fyne.Do(func() {
+					if gen == g.playGen {
+						g.playing = -1
+						g.refresh()
+					}
+				})
 			})
-		})
+		}
+		if err != nil {
+			g.playing = -1
+			g.refresh()
+			g.showError(err)
+		}
 	}
-	if err == nil {
-		g.playing = index
-	}
+	g.fetchSample(card, index, start)
 	g.refresh()
-	g.showError(err)
 }
 
 func (g *gui) stopPlayback() {
