@@ -1,0 +1,18 @@
+# build output
+/sp404
+/sp404gui
+/wav404-gui
+/dist/
+*.exe
+*.app/
+
+# Go test / profiling output
+*.test
+*.out
+*.prof
+coverage.*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
