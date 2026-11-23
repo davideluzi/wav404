@@ -36,7 +36,7 @@ Ready-made builds are attached to each
 [release](https://github.com/davideluzi/wav404/releases):
 
 - **macOS 13 Ventura or later**, Apple Silicon and Intel (universal app).
-  Open the `.dmg` and drag *wav404* onto *Applications*. The app is not
+  Unzip it and drag *wav404* into your *Applications* folder. The app is not
   notarized: the first time macOS blocks it. Go to *System Settings → Privacy &
   Security* and click *Open Anyway* (on macOS 13–14 right-click the app and
   choose *Open* also works).
