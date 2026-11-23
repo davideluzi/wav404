@@ -1,0 +1,8 @@
+Website = "https://github.com/davideluzi/wav404"
+
+[Details]
+Icon = "Icon.png"
+Name = "wav404"
+ID = "app.wav404"
+Version = "0.1.0"
+Build = 3

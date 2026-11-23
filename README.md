@@ -28,7 +28,19 @@ app and as a command-line tool.
 - **Safe writes**: every change goes to a temporary file that then replaces the
   original, so an interrupted write never leaves a corrupt file on the card.
 
-## Install
+## Download
+
+Ready-made builds are attached to each
+[release](https://github.com/davideluzi/wav404/releases):
+
+- **macOS 13 Ventura or later**, Apple Silicon and Intel (universal app).
+  The app is not notarized: the first time, right-click it and choose *Open*.
+- **Windows 10 or later**, 64-bit.
+
+Every push to `main` also builds them; download them from the run's
+*Artifacts* on the [Actions](https://github.com/davideluzi/wav404/actions) page.
+
+## Build from source
 
 You need [Go](https://go.dev/dl/) 1.27 or later and a C compiler (the GUI uses
 [Fyne](https://fyne.io), which needs cgo).
@@ -45,7 +57,10 @@ go install github.com/davideluzi/wav404/cmd/sp404gui@latest   # desktop app
 go install github.com/davideluzi/wav404/cmd/sp404@latest      # command line
 ```
 
-Or from a clone: `go run ./cmd/sp404gui`.
+Or from a clone: `go run ./cmd/sp404gui`. To make the macOS app bundle, install
+the packaging tool (`go install fyne.io/tools/cmd/fyne@latest`) and run
+`fyne package --os darwin` in `cmd/sp404gui`. The CI workflow
+(`.github/workflows/build.yml`) shows the full universal and Windows builds.
 
 ## Usage
 
