@@ -36,6 +36,12 @@ func peaks(s *sp404sx.Sample, columns int) []peak {
 	return out
 }
 
+// wavePalette colours the waveform: background, audio inside and outside
+// the trim range, and the markers.
+type wavePalette struct{ bg, in, out, marker color.Color }
+
+var flatWave = wavePalette{colPadEmpty, colAccent, colMuted, colText}
+
 // waveView draws a sample with its trim range. Dragging moves the marker
 // nearest to where the drag started; onTrim runs when the drag ends.
 type waveView struct {
@@ -44,6 +50,7 @@ type waveView struct {
 	start, end int // trim, in frames
 	minGap     int // smallest range that survives 4-byte alignment
 	onTrim     func(start, end int)
+	pal        wavePalette
 
 	dragging int // 0 none, 1 start marker, 2 end marker
 
@@ -52,7 +59,7 @@ type waveView struct {
 }
 
 func newWaveView(onTrim func(start, end int)) *waveView {
-	w := &waveView{onTrim: onTrim}
+	w := &waveView{onTrim: onTrim, pal: flatWave}
 	w.ExtendBaseWidget(w)
 	return w
 }
@@ -135,7 +142,7 @@ func (w *waveView) draw(width, height int) image.Image {
 		}
 	}
 	for x := range width {
-		fill(x, 0, height-1, colPadEmpty)
+		fill(x, 0, height-1, w.pal.bg)
 	}
 	frames := w.frames()
 	if frames == 0 || width == 0 {
@@ -148,15 +155,15 @@ func (w *waveView) draw(width, height int) image.Image {
 	startX := w.start * width / frames
 	endX := min(w.end*width/frames, width-1)
 	for x, p := range w.cachePeaks {
-		c := colMuted
+		c := w.pal.out
 		if x >= startX && x <= endX {
-			c = colAccent
+			c = w.pal.in
 		}
 		fill(x, int(mid-p.max*mid), int(mid-p.min*mid), c)
 	}
 	// 2 px markers, drawn inwards so they stay visible at both edges
 	for _, x := range []int{startX, min(startX+1, width-1), endX, max(endX-1, 0)} {
-		fill(x, 0, height-1, colText)
+		fill(x, 0, height-1, w.pal.marker)
 	}
 	return img
 }
