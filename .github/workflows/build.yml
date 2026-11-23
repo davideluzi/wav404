@@ -55,7 +55,7 @@ jobs:
             lipo -create -output "build/$cmd" "build/$cmd-arm64" "build/$cmd-amd64"
             lipo -info "build/$cmd"
           done
-      - name: Package wav404.app
+      - name: Package wav404.app and wav404.dmg
         working-directory: cmd/wav404
         run: |
           fyne package --os darwin --exe ../../build/wav404 --app-build "$GITHUB_RUN_NUMBER" $VERSION_FLAG
@@ -63,12 +63,23 @@ jobs:
           codesign --force --deep --sign - wav404.app
           codesign --verify --deep --strict wav404.app
           mkdir -p ../../dist
-          ditto -c -k --keepParent wav404.app ../../dist/wav404-macos-universal.zip
+          # Disk image with the app and a link to /Applications to drag it onto.
+          staging=$(mktemp -d)
+          ditto wav404.app "$staging/wav404.app"
+          ln -s /Applications "$staging/Applications"
+          hdiutil create -volname wav404 -srcfolder "$staging" -fs HFS+ -format UDZO -ov \
+            ../../dist/wav404-macos-universal.dmg
+          hdiutil verify ../../dist/wav404-macos-universal.dmg
+          mnt=$(hdiutil attach -nobrowse -readonly ../../dist/wav404-macos-universal.dmg | awk -F'\t' '/\/Volumes\//{print $NF}')
+          codesign --verify --deep --strict "$mnt/wav404.app"
+          hdiutil detach "$mnt"
           cd ../../build && zip ../dist/sp404-cli-macos-universal.zip sp404
       - uses: actions/upload-artifact@v7
         with:
           name: macos
-          path: dist/*.zip
+          path: |
+            dist/*.dmg
+            dist/*.zip
 
   windows:
     needs: test
@@ -124,4 +135,4 @@ jobs:
       - name: GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/*.zip --repo "$GITHUB_REPOSITORY" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" dist/*.dmg dist/*.zip --repo "$GITHUB_REPOSITORY" --generate-notes

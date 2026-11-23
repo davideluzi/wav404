@@ -24,7 +24,7 @@ app and as a command-line tool.
 - **Pad settings**: volume, loop, gate, reverse, lo-fi, tempo.
 - **Trim** on a waveform: drag the start and end markers.
 - **Export** a pad as a standard WAV, whole or limited to its trim range.
-- **Drag & drop** files onto pads; dropping several files fills consecutive pads.
+- **Drag & drop** a file onto a pad; on macOS the target pad lights up.
 - **Safe writes**: every change goes to a temporary file that then replaces the
   original, so an interrupted write never leaves a corrupt file on the card.
 
@@ -34,7 +34,10 @@ Ready-made builds are attached to each
 [release](https://github.com/davideluzi/wav404/releases):
 
 - **macOS 13 Ventura or later**, Apple Silicon and Intel (universal app).
-  The app is not notarized: the first time, right-click it and choose *Open*.
+  Open the `.dmg` and drag *wav404* onto *Applications*. The app is not
+  notarized: the first time macOS blocks it. Go to *System Settings → Privacy &
+  Security* and click *Open Anyway* (on macOS 13–14 right-click the app and
+  choose *Open* also works).
 - **Windows 10 or later**, 64-bit.
 
 Every push to `main` also builds them; download them from the run's
