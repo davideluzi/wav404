@@ -36,7 +36,9 @@ You need [Go](https://go.dev/dl/) 1.27 or later and a C compiler (the GUI uses
 - **macOS**: Xcode Command Line Tools (`xcode-select --install`).
 - **Windows**: a MinGW-w64 GCC, e.g. from [MSYS2](https://www.msys2.org/).
 - **Linux** (Debian/Ubuntu):
-  `sudo apt install gcc libgl1-mesa-dev xorg-dev libasound2-dev`
+  `sudo apt install gcc libgl1-mesa-dev xorg-dev libasound2-dev`.
+  For the system file dialogs, also install `zenity` (GNOME) or `kdialog` (KDE).
+  Without them the app uses its own built-in dialogs.
 
 ```sh
 go install github.com/davideluzi/wav404/cmd/sp404gui@latest   # desktop app
@@ -60,7 +62,9 @@ and pick the card's root folder (the one containing `ROLAND`).
 
 - Pick a bank (A–J), click a pad to select it, **double-click** to listen.
   Space plays/stops the selected pad.
-- *Import…* or drop files onto a pad to load samples.
+- *Import…* or drop files onto a pad to load samples. You can pick several
+  files at once: they fill the selected pad and the ones after it. The app
+  remembers the last folder you used.
 - Change the settings in the panel under the pads. Drag the white markers on
   the waveform to set where the pad starts and stops playing.
 - *Export…* saves the pad as a WAV file. Tick *Only the trimmed part* to export

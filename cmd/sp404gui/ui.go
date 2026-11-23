@@ -3,15 +3,17 @@ package main
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
+	"github.com/ncruces/zenity"
 
 	"github.com/davideluzi/wav404/sp404sx"
 )
@@ -26,6 +28,7 @@ type gui struct {
 	playing  int // pad index being previewed, -1 = none
 	playGen  int // identifies the current playback; stale end callbacks are ignored
 	player   audioPlayer
+	picker   picker
 
 	tiles                          [sp404sx.PadsPerBank]*padTile
 	banks                          *widget.RadioGroup
@@ -42,7 +45,8 @@ type gui struct {
 }
 
 func newGUI(w fyne.Window) *gui {
-	g := &gui{win: w, selected: -1, playing: -1, player: &otoPlayer{}}
+	g := &gui{win: w, selected: -1, playing: -1, player: &otoPlayer{},
+		picker: choosePicker(w, zenity.IsAvailable())}
 	g.confirm = func(title, message string, ok func()) {
 		dialog.ShowConfirm(title, message, func(yes bool) {
 			if yes {
@@ -263,38 +267,39 @@ func (g *gui) importInto(first int, paths []string) {
 		fmt.Sprintf("These pads already have a sample that will be replaced:\n%s", strings.Join(overwrite, ", ")), run)
 }
 
+func (g *gui) prefs() fyne.Preferences { return fyne.CurrentApp().Preferences() }
+
+// importDialog imports one or more files starting at the selected pad.
+// Card and pad are fixed when the dialog opens: the native dialog does not
+// block the window, so the selection may change meanwhile.
 func (g *gui) importDialog() {
-	if g.selected < 0 {
+	if g.card == nil || g.selected < 0 {
 		return
 	}
-	d := dialog.NewFileOpen(func(r fyne.URIReadCloser, err error) {
-		if err != nil || r == nil {
+	card, pad := g.card, g.selected
+	g.picker.openAudio(g.prefs().String(prefImportDir), func(paths []string, err error) {
+		if err != nil || len(paths) == 0 || g.card != card {
 			g.showError(err)
 			return
 		}
-		r.Close()
-		g.importInto(g.selected, []string{r.URI().Path()})
-	}, g.win)
-	d.SetFilter(storage.NewExtensionFileFilter([]string{".wav", ".WAV", ".aif", ".AIF", ".aiff", ".AIFF"}))
-	d.Show()
+		g.prefs().SetString(prefImportDir, filepath.Dir(paths[0]))
+		g.importInto(pad, paths)
+	})
 }
 
 func (g *gui) exportDialog() {
-	if g.selected < 0 {
+	if g.card == nil || g.selected < 0 {
 		return
 	}
-	pad, trim := g.selected, g.trim.Checked
-	d := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) {
-		if err != nil || w == nil {
+	card, pad, trim := g.card, g.selected, g.trim.Checked
+	g.picker.saveWAV(g.prefs().String(prefExportDir), sp404sx.PadName(pad)+".wav", func(path string, err error) {
+		if err != nil || path == "" {
 			g.showError(err)
 			return
 		}
-		w.Close()
-		path := w.URI().Path()
-		g.runTask("Exporting…", func() error { return g.card.ExportFile(pad, path, trim) }, g.showError)
-	}, g.win)
-	d.SetFileName(sp404sx.PadName(pad) + ".wav")
-	d.Show()
+		g.prefs().SetString(prefExportDir, filepath.Dir(path))
+		g.runTask("Exporting…", func() error { return card.ExportFile(pad, path, trim) }, g.showError)
+	})
 }
 
 func (g *gui) clearSelected() {
@@ -357,13 +362,17 @@ func (g *gui) stopPlayback() {
 }
 
 func (g *gui) openFolderDialog() {
-	dialog.ShowFolderOpen(func(u fyne.ListableURI, err error) {
-		if err != nil || u == nil {
+	g.picker.openFolder(g.prefs().String(prefCardDir), func(path string, err error) {
+		if err != nil || path == "" {
 			g.showError(err)
 			return
 		}
-		g.showError(g.openCard(u.Path()))
-	}, g.win)
+		if err := g.openCard(path); err != nil {
+			g.showError(err)
+			return
+		}
+		g.prefs().SetString(prefCardDir, filepath.Dir(path))
+	})
 }
 
 // runInBackground runs task off the UI thread behind a modal progress
