@@ -49,16 +49,16 @@ jobs:
       - name: Universal binaries (arm64 + x86_64)
         run: |
           mkdir -p build
-          for cmd in sp404gui sp404; do
+          for cmd in wav404 sp404; do
             CGO_ENABLED=1 GOARCH=arm64 go build -trimpath -o "build/$cmd-arm64" "./cmd/$cmd"
             CGO_ENABLED=1 GOARCH=amd64 CC="clang -arch x86_64" go build -trimpath -o "build/$cmd-amd64" "./cmd/$cmd"
             lipo -create -output "build/$cmd" "build/$cmd-arm64" "build/$cmd-amd64"
             lipo -info "build/$cmd"
           done
       - name: Package wav404.app
-        working-directory: cmd/sp404gui
+        working-directory: cmd/wav404
         run: |
-          fyne package --os darwin --exe ../../build/sp404gui --app-build "$GITHUB_RUN_NUMBER" $VERSION_FLAG
+          fyne package --os darwin --exe ../../build/wav404 --app-build "$GITHUB_RUN_NUMBER" $VERSION_FLAG
           /usr/libexec/PlistBuddy -c "Set :LSMinimumSystemVersion $MACOSX_DEPLOYMENT_TARGET" wav404.app/Contents/Info.plist
           codesign --force --deep --sign - wav404.app
           codesign --verify --deep --strict wav404.app
@@ -95,13 +95,13 @@ jobs:
             echo "VERSION_FLAG=--app-version ${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
           fi
       - name: Package wav404.exe
-        working-directory: cmd/sp404gui
+        working-directory: cmd/wav404
         run: fyne package --os windows --app-build "$GITHUB_RUN_NUMBER" $VERSION_FLAG
       - name: Zip
         run: |
           mkdir -p dist
           go build -trimpath -o dist/sp404.exe ./cmd/sp404
-          cp cmd/sp404gui/wav404.exe dist/
+          cp cmd/wav404/wav404.exe dist/
           cd dist
           7z a wav404-windows-amd64.zip wav404.exe
           7z a sp404-cli-windows-amd64.zip sp404.exe

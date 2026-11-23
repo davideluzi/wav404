@@ -1,6 +1,6 @@
 # build output
 /sp404
-/sp404gui
+/wav404
 /wav404-gui
 /dist/
 *.exe

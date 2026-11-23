@@ -14,7 +14,7 @@ import (
 // 824 px rounded square on a transparent canvas) with the panel's own
 // graphics: brushed metal and four rubber pads, one lit amber.
 //
-//	WAV404_ICON=$PWD/cmd/sp404gui/Icon.png go test ./cmd/sp404gui -run Icon
+//	WAV404_ICON=$PWD/cmd/wav404/Icon.png go test ./cmd/wav404 -run Icon
 func TestRenderIcon(t *testing.T) {
 	out := os.Getenv("WAV404_ICON")
 	if out == "" {

@@ -9,7 +9,7 @@ import (
 )
 
 // TestRenderScreenshot writes the main window (fake card, bank J, J5
-// selected and playing) to a PNG: WAV404_SCREENSHOT=/path/out.png go test ./cmd/sp404gui -run Screenshot
+// selected and playing) to a PNG: WAV404_SCREENSHOT=/path/out.png go test ./cmd/wav404 -run Screenshot
 func TestRenderScreenshot(t *testing.T) {
 	out := os.Getenv("WAV404_SCREENSHOT")
 	if out == "" {

@@ -7,7 +7,7 @@ import (
 )
 
 // TestOtoPlayerSmoke plays 0.2 s of silence on the real audio output.
-// Needs an audio device: WAV404_AUDIO_TEST=1 go test ./cmd/sp404gui -run Oto
+// Needs an audio device: WAV404_AUDIO_TEST=1 go test ./cmd/wav404 -run Oto
 func TestOtoPlayerSmoke(t *testing.T) {
 	if os.Getenv("WAV404_AUDIO_TEST") == "" {
 		t.Skip("WAV404_AUDIO_TEST not set")

@@ -1,4 +1,4 @@
-// Command sp404gui is the desktop app for managing SP-404SX sample cards.
+// Command wav404 is the desktop app for managing SP-404SX sample cards.
 package main
 
 import (

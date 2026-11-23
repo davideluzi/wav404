@@ -53,13 +53,13 @@ You need [Go](https://go.dev/dl/) 1.27 or later and a C compiler (the GUI uses
   Without them the app uses its own built-in dialogs.
 
 ```sh
-go install github.com/davideluzi/wav404/cmd/sp404gui@latest   # desktop app
+go install github.com/davideluzi/wav404/cmd/wav404@latest   # desktop app
 go install github.com/davideluzi/wav404/cmd/sp404@latest      # command line
 ```
 
-Or from a clone: `go run ./cmd/sp404gui`. To make the macOS app bundle, install
+Or from a clone: `go run ./cmd/wav404`. To make the macOS app bundle, install
 the packaging tool (`go install fyne.io/tools/cmd/fyne@latest`) and run
-`fyne package --os darwin` in `cmd/sp404gui`. The CI workflow
+`fyne package --os darwin` in `cmd/wav404`. The CI workflow
 (`.github/workflows/build.yml`) shows the full universal and Windows builds.
 
 ## Usage
@@ -72,14 +72,14 @@ you are done.
 ### Desktop app
 
 Insert the card (it must have been formatted by the SP-404SX) and start
-`sp404gui`. The card is found automatically. If it is not, use *Open folder…*
+`wav404`. The card is found automatically. If it is not, use *Open folder…*
 and pick the card's root folder (the one containing `ROLAND`).
 
 - Pick a bank (A–J), click a pad to select it, **double-click** to listen.
   Space plays/stops the selected pad.
-- *Import…* or drop files onto a pad to load samples. You can pick several
-  files at once: they fill the selected pad and the ones after it. The app
-  remembers the last folder you used.
+- *Import…* loads a file into the selected pad, or drop a file onto a pad
+  (on macOS the pad under the cursor lights up). One file at a time, like
+  Roland's converter. The app remembers the last folder you used.
 - Change the settings in the panel under the pads. Drag the white markers on
   the waveform to set where the pad starts and stops playing.
 - *Export…* saves the pad as a WAV file. Tick *Only the trimmed part* to export
@@ -109,7 +109,7 @@ go test ./...
 ```
 
 - `sp404sx/` is the core library: the card format, decoding, resampling,
-  import/export and card operations. `cmd/sp404` and `cmd/sp404gui` are thin
+  import/export and card operations. `cmd/sp404` and `cmd/wav404` are thin
   front ends.
 - The test fixtures in `sp404sx/testdata` are synthetic. Regenerate them with
   `go run ./tools/genfixtures`, then `tools/genfixtures/import-fixtures.sh`
@@ -118,7 +118,7 @@ go test ./...
   - `SP404_CARD=/Volumes/SP-404SX go test ./sp404sx -run RealCard`
     reads (never writes) every sample on a real card and checks it decodes and
     re-encodes byte for byte.
-  - `WAV404_AUDIO_TEST=1 go test ./cmd/sp404gui -run Oto` plays 0.2 s of
+  - `WAV404_AUDIO_TEST=1 go test ./cmd/wav404 -run Oto` plays 0.2 s of
     silence on the real audio output.
 
 ## License
