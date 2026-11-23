@@ -25,7 +25,10 @@ func TestWriteChunkedLimitsEachWrite(t *testing.T) {
 		data[i] = byte(i * 7)
 	}
 	var w recordWriter
-	if err := writeChunked(&w, data); err != nil {
+	var reports [][2]int64
+	if err := writeChunked(&w, data, func(done, total int64) {
+		reports = append(reports, [2]int64{done, total})
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(w.buf.Bytes(), data) {
@@ -38,5 +41,22 @@ func TestWriteChunkedLimitsEachWrite(t *testing.T) {
 		if n > writeChunk {
 			t.Fatalf("write of %d bytes exceeds chunk %d", n, writeChunk)
 		}
+	}
+	total := int64(len(data))
+	want := [][2]int64{{writeChunk, total}, {2 * writeChunk, total}, {3 * writeChunk, total}, {total, total}}
+	if len(reports) != len(want) {
+		t.Fatalf("progress reports %v, want %v", reports, want)
+	}
+	for i := range want {
+		if reports[i] != want[i] {
+			t.Fatalf("progress reports %v, want %v", reports, want)
+		}
+	}
+}
+
+func TestWriteChunkedNilProgress(t *testing.T) {
+	var w recordWriter
+	if err := writeChunked(&w, []byte("abc"), nil); err != nil || w.buf.String() != "abc" {
+		t.Fatalf("err=%v got %q", err, w.buf.String())
 	}
 }

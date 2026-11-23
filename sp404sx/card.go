@@ -53,15 +53,22 @@ func (c *Card) ReadSample(index int) (*Sample, error) {
 	return DecodeSample(raw)
 }
 
+// Progress is told how many bytes of a file have been written so far.
+type Progress func(done, total int64)
+
 // Assign writes s as the sample of pad index, then records it in
 // PAD_INFO.BIN with the converter's import defaults.
-func (c *Card) Assign(index int, s *Sample) error {
+func (c *Card) Assign(index int, s *Sample) error { return c.AssignProgress(index, s, nil) }
+
+// AssignProgress is Assign, reporting the sample file write to progress
+// (which may be nil).
+func (c *Card) AssignProgress(index int, s *Sample, progress Progress) error {
 	if err := checkIndex(index); err != nil {
 		return err
 	}
 	cp := *s
 	cp.PadIndex = index
-	if err := writeFileAtomic(c.SamplePath(index), cp.Encode()); err != nil {
+	if err := writeFileAtomic(c.SamplePath(index), cp.Encode(), progress); err != nil {
 		return err
 	}
 	return c.setPad(index, cp.NewPad())
@@ -117,7 +124,7 @@ func (c *Card) SetPad(index int, p Pad) error {
 func (c *Card) setPad(index int, p Pad) error {
 	next := *c.Info
 	next.Pads[index] = p
-	if err := writeFileAtomic(c.padInfoPath(), next.MarshalBinary()); err != nil {
+	if err := writeFileAtomic(c.padInfoPath(), next.MarshalBinary(), nil); err != nil {
 		return err
 	}
 	c.Info.Pads[index] = p
@@ -126,13 +133,14 @@ func (c *Card) setPad(index int, p Pad) error {
 
 // writeFileAtomic writes to a temp file in the same directory, then renames,
 // so an interrupted write never leaves a truncated file on the card.
-func writeFileAtomic(path string, data []byte) error {
+// progress (may be nil) follows the data write.
+func writeFileAtomic(path string, data []byte, progress Progress) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".wav404-*")
 	if err != nil {
 		return err
 	}
 	defer os.Remove(tmp.Name()) // no-op after a successful rename
-	err = writeChunked(tmp, data)
+	err = writeChunked(tmp, data, progress)
 	if err == nil {
 		err = tmp.Sync()
 	}
@@ -150,14 +158,19 @@ func writeFileAtomic(path string, data []byte) error {
 // "operation timed out" before it completes.
 const writeChunk = 1 << 20
 
-// writeChunked writes data in calls of at most writeChunk bytes.
-func writeChunked(w io.Writer, data []byte) error {
-	for len(data) > 0 {
-		n := min(len(data), writeChunk)
-		if _, err := w.Write(data[:n]); err != nil {
+// writeChunked writes data in calls of at most writeChunk bytes,
+// reporting to progress (may be nil) after each one.
+func writeChunked(w io.Writer, data []byte, progress Progress) error {
+	total := int64(len(data))
+	for off := 0; off < len(data); {
+		n := min(len(data)-off, writeChunk)
+		if _, err := w.Write(data[off : off+n]); err != nil {
 			return err
 		}
-		data = data[n:]
+		off += n
+		if progress != nil {
+			progress(int64(off), total)
+		}
 	}
 	return nil
 }

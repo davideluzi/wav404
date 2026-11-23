@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -42,7 +43,7 @@ type gui struct {
 
 	// replaceable in tests
 	confirm func(title, message, action string, ok func())
-	runTask func(label string, task func() error, done func(error))
+	runTask func(label string, task func(progressFunc) error, done func(error))
 }
 
 func newGUI(w fyne.Window) *gui {
@@ -277,9 +278,21 @@ func (g *gui) importInto(first int, paths []string) {
 	pads, overwrite := dropTargets(g.card, first, len(paths))
 	run := func() {
 		g.stopPlayback()
-		g.runTask("Importing…", func() error {
+		g.runTask("Importing…", func(report progressFunc) error {
+			sizes := make([]int64, len(paths))
+			for i, p := range paths {
+				if fi, err := os.Stat(p); err == nil {
+					sizes[i] = fi.Size()
+				}
+			}
+			batch := newBatchProgress(sizes)
 			for i, pad := range pads {
-				if err := g.card.ImportFile(pad, paths[i]); err != nil {
+				detail := fmt.Sprintf("File %d of %d → %s: %s", i+1, len(pads), sp404sx.PadName(pad), filepath.Base(paths[i]))
+				report(batch.fraction(i, 0, 1), detail)
+				err := g.card.ImportFileProgress(pad, paths[i], func(done, total int64) {
+					report(batch.fraction(i, done, total), detail)
+				})
+				if err != nil {
 					return err
 				}
 			}
@@ -332,7 +345,7 @@ func (g *gui) exportDialog() {
 			return
 		}
 		g.prefs().SetString(prefExportDir, filepath.Dir(path))
-		g.runTask("Exporting…", func() error { return card.ExportFile(pad, path, trim) }, g.showError)
+		g.runTask("Exporting…", func(progressFunc) error { return card.ExportFile(pad, path, trim) }, g.showError)
 	})
 }
 
@@ -417,14 +430,35 @@ func (g *gui) openFolderDialog() {
 }
 
 // runInBackground runs task off the UI thread behind a modal progress
-// dialog, then calls done on the UI thread.
-func (g *gui) runInBackground(label string, task func() error, done func(error)) {
-	bar := widget.NewProgressBarInfinite()
-	d := dialog.NewCustomWithoutButtons(label, bar, g.win)
+// dialog, then calls done on the UI thread. The bar spins until the task
+// first reports progress, then shows the fraction done.
+func (g *gui) runInBackground(label string, task func(progressFunc) error, done func(error)) {
+	spinner := widget.NewProgressBarInfinite()
+	bar := widget.NewProgressBar()
+	bar.Hide()
+	detail := widget.NewLabel("") // always laid out, so the dialog keeps its height
+	detail.Truncation = fyne.TextTruncateEllipsis
+	body := container.NewVBox(detail, container.NewStack(spinner, bar))
+	d := dialog.NewCustomWithoutButtons(label, body, g.win)
+	d.Resize(fyne.NewSize(420, d.MinSize().Height))
 	d.Show()
-	go func() {
-		err := task()
+	report := func(fraction float64, text string) {
 		fyne.Do(func() {
+			if spinner.Visible() {
+				spinner.Stop()
+				spinner.Hide()
+				bar.Show()
+			}
+			bar.SetValue(fraction)
+			if text != detail.Text {
+				detail.SetText(text)
+			}
+		})
+	}
+	go func() {
+		err := task(report)
+		fyne.Do(func() {
+			spinner.Stop()
 			d.Hide()
 			done(err)
 		})

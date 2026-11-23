@@ -27,6 +27,13 @@ func ParsePad(s string) (int, error) {
 // ImportFile converts a WAV/AIFF file and assigns it to a pad.
 // On error the card is left unchanged.
 func (c *Card) ImportFile(index int, path string) error {
+	return c.ImportFileProgress(index, path, nil)
+}
+
+// ImportFileProgress is ImportFile, reporting the write of the sample file
+// to the card (the slow part) to progress, which may be nil. Nothing is
+// reported while the file is read and converted.
+func (c *Card) ImportFileProgress(index int, path string, progress Progress) error {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -35,7 +42,7 @@ func (c *Card) ImportFile(index int, path string) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
-	return c.Assign(index, s)
+	return c.AssignProgress(index, s, progress)
 }
 
 // ExportFile writes a pad's sample to path as a standard WAV, optionally

@@ -21,7 +21,7 @@ func newTestGUI(t *testing.T) (*gui, string) {
 	w := a.NewWindow("test")
 	g := newGUI(w)
 	g.confirm = func(_, _, _ string, ok func()) { ok() }
-	g.runTask = func(_ string, task func() error, done func(error)) { done(task()) }
+	g.runTask = func(_ string, task func(progressFunc) error, done func(error)) { done(task(func(float64, string) {})) }
 	g.player = &fakePlayer{}
 	g.async = func(work, done func()) { work(); done() } // reads complete at once
 	w.SetContent(g.content())
