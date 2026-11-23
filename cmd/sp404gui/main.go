@@ -12,7 +12,7 @@ func main() {
 	w := a.NewWindow("wav404")
 	g := newGUI(w)
 	w.SetContent(g.content())
-	w.Resize(fyne.NewSize(720, 520))
+	w.Resize(fyne.NewSize(780, 720))
 	g.scanCards()
 	w.ShowAndRun()
 }

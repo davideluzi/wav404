@@ -119,3 +119,38 @@ func (pi *PadInfo) MarshalBinary() []byte {
 	}
 	return out
 }
+
+// TrimFrames returns the user start and end points as frame positions.
+func (p Pad) TrimFrames() (start, end int) {
+	fb := 2 * int(p.Channels)
+	return int(p.UserStart-p.Start) / fb, int(p.UserEnd-p.Start) / fb
+}
+
+// SetTrim sets the user start and end points from frame positions
+// (0 ≤ start < end ≤ Frames). Like Roland's converter, offsets are rounded
+// down to a multiple of 4 bytes (every frame in stereo, every second frame
+// in mono); the end of the sample always stays reachable.
+func (p *Pad) SetTrim(start, end int) error {
+	frames := p.Frames()
+	if start < 0 || end > frames || start >= end {
+		return fmt.Errorf("trim %d–%d outside the sample (%d frames)", start, end, frames)
+	}
+	align := func(f int) uint32 {
+		if f == frames {
+			return p.End
+		}
+		return p.Start + uint32(f*2*int(p.Channels))&^3
+	}
+	us, ue := align(start), align(end)
+	if ue <= us {
+		return fmt.Errorf("trim %d–%d too short", start, end)
+	}
+	p.UserStart, p.UserEnd = us, ue
+	return nil
+}
+
+// trimAligned reports whether the user points sit on 4-byte boundaries
+// (the end may also be the end of the sample).
+func (p Pad) trimAligned() bool {
+	return (p.UserStart-p.Start)%4 == 0 && ((p.UserEnd-p.Start)%4 == 0 || p.UserEnd == p.End)
+}

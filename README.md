@@ -22,6 +22,7 @@ app and as a command-line tool.
 - **Original tempo** computed exactly like Roland's converter.
 - **Listen** to pads as they would sound (trim range, reverse, volume).
 - **Pad settings**: volume, loop, gate, reverse, lo-fi, tempo.
+- **Trim** on a waveform: drag the start and end markers.
 - **Export** a pad as a standard WAV, whole or limited to its trim range.
 - **Drag & drop** files onto pads; dropping several files fills consecutive pads.
 - **Safe writes**: every change goes to a temporary file that then replaces the
@@ -60,7 +61,8 @@ and pick the card's root folder (the one containing `ROLAND`).
 - Pick a bank (A–J), click a pad to select it, **double-click** to listen.
   Space plays/stops the selected pad.
 - *Import…* or drop files onto a pad to load samples.
-- Change the settings in the panel under the pads.
+- Change the settings in the panel under the pads. Drag the white markers on
+  the waveform to set where the pad starts and stops playing.
 - *Export…* saves the pad as a WAV file. Tick *Only the trimmed part* to export
   just the trim range.
 
@@ -75,7 +77,6 @@ sp404 clear  /Volumes/SP-404SX J5              # delete the sample on J5
 
 ## Limitations
 
-- Trim points can't be edited yet (they are kept, exported and previewed).
 - Lo-fi and looping are not rendered when you listen in the app.
 - Patterns (`PTN/`) are not handled.
 - Samples stored on the card as `.AIF` (byte 21 = 0) are not read. This

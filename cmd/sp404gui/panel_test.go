@@ -142,3 +142,73 @@ func TestUnchangedEditDoesNotWrite(t *testing.T) {
 		t.Error("an edit that changes nothing rewrote PAD_INFO.BIN")
 	}
 }
+
+func TestWaveShowsSelectedPad(t *testing.T) {
+	g, _ := newTestGUI(t)
+	selectJ5(g)
+	if g.wave.frames() != 29729 || g.wave.start != 0 || g.wave.end != 29729 {
+		t.Errorf("wave: %d frames, trim %d–%d", g.wave.frames(), g.wave.start, g.wave.end)
+	}
+	if !strings.Contains(g.trimLabel.Text, "0.674") {
+		t.Errorf("trim label = %q", g.trimLabel.Text)
+	}
+}
+
+func TestTrimSavesAndResets(t *testing.T) {
+	g, root := newTestGUI(t)
+	j5 := selectJ5(g)
+	g.wave.onTrim(1000, 20000) // as at the end of a drag
+	p := reopenPad(t, root, j5)
+	if p.UserStart != 512+4*1000 || p.UserEnd != 512+4*20000 {
+		t.Errorf("saved trim %d–%d", p.UserStart, p.UserEnd)
+	}
+	if g.wave.start != 1000 || g.wave.end != 20000 || !strings.Contains(g.trimLabel.Text, "0.431") {
+		t.Errorf("after trim: markers %d–%d, label %q", g.wave.start, g.wave.end, g.trimLabel.Text)
+	}
+	test.Tap(g.resetTrim)
+	if p := reopenPad(t, root, j5); p.UserStart != p.Start || p.UserEnd != p.End {
+		t.Errorf("after reset: %d–%d", p.UserStart, p.UserEnd)
+	}
+	if g.wave.start != 0 || g.wave.end != 29729 {
+		t.Errorf("markers after reset: %d–%d", g.wave.start, g.wave.end)
+	}
+}
+
+func TestWaveEmptyForEmptyPad(t *testing.T) {
+	g, _ := newTestGUI(t)
+	selectJ5(g)
+	g.banks.SetSelected("A")
+	test.Tap(g.tiles[0]) // A1
+	if g.wave.sample != nil || !g.resetTrim.Disabled() || g.trimLabel.Text != "" {
+		t.Errorf("empty pad: wave %v, reset disabled %v, label %q", g.wave.sample != nil, g.resetTrim.Disabled(), g.trimLabel.Text)
+	}
+}
+
+func TestWaveMissingFile(t *testing.T) {
+	g, _ := newTestGUI(t)
+	test.Tap(g.tiles[1]) // A2: assigned in PAD_INFO, but no file on the fake card
+	if g.wave.sample != nil || !strings.Contains(g.trimLabel.Text, "not found") {
+		t.Errorf("wave %v, label %q", g.wave.sample != nil, g.trimLabel.Text)
+	}
+}
+
+// Importing a different file with the same length gives an identical pad
+// record: the waveform must still show the new audio.
+func TestWaveReloadsAfterImport(t *testing.T) {
+	g, root := newTestGUI(t)
+	j5 := selectJ5(g)
+	before := g.wave.sample
+	recBefore := reopenPad(t, root, j5)
+	silent := &sp404sx.Sample{Channels: 2, PCM: make([]int16, 2*29729)}
+	src := filepath.Join(t.TempDir(), "silent.wav")
+	if err := os.WriteFile(src, silent.EncodeWAV(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	g.importInto(j5, []string{src})
+	if reopenPad(t, root, j5) != recBefore {
+		t.Fatal("setup: the new pad record should be identical to the old one")
+	}
+	if g.wave.sample == before || g.wave.sample.PCM[1000] != 0 {
+		t.Error("waveform still shows the old sample")
+	}
+}

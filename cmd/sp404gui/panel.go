@@ -24,6 +24,10 @@ type padPanel struct {
 	bpm                       *widget.Entry
 	origBPM                   *widget.Label
 	resetBPM                  *widget.Button
+	wave                      *waveView
+	trimLabel                 *widget.Label
+	resetTrim                 *widget.Button
+	waveIndex                 int // pad whose sample the wave holds, -1 = none
 
 	loading  bool        // true while the widgets are being filled in
 	shownPad int         // pad the widgets show: -1 none, panelStale = reload
@@ -33,7 +37,12 @@ type padPanel struct {
 const panelStale = -2
 
 func (g *gui) buildPanel() {
-	g.shownPad = panelStale
+	g.shownPad, g.waveIndex = panelStale, -1
+	g.wave = newWaveView(g.editTrim)
+	g.trimLabel = widget.NewLabel("")
+	g.resetTrim = widget.NewButtonWithIcon("Whole sample", theme.ContentUndoIcon(), func() {
+		g.editTrim(0, g.wave.frames())
+	})
 	g.volume = widget.NewSlider(0, 127)
 	g.volume.Step = 1
 	g.volumeLabel = widget.NewLabel("")
@@ -69,6 +78,8 @@ func (g *gui) buildPanel() {
 func (g *gui) panelContent() fyne.CanvasObject {
 	bpmBox := container.NewGridWrap(fyne.NewSize(80, g.bpm.MinSize().Height), g.bpm)
 	return container.NewVBox(
+		g.wave,
+		container.NewBorder(nil, nil, nil, g.resetTrim, g.trimLabel),
 		container.NewBorder(nil, nil, widget.NewLabel("Volume"), g.volumeLabel, g.volume),
 		container.NewHBox(g.loop, g.gate, g.reverse, g.lofi,
 			widget.NewSeparator(),
@@ -103,6 +114,7 @@ func (g *gui) loadPanel() {
 
 	g.loading = true
 	defer func() { g.loading = false }()
+	g.loadWave(index, p)
 	for _, w := range []fyne.Disableable{g.volume, g.loop, g.gate, g.reverse, g.lofi, g.bpm, g.resetBPM} {
 		if index < 0 {
 			w.Disable()
@@ -127,6 +139,52 @@ func (g *gui) loadPanel() {
 	}
 	g.bpm.SetText(fmt.Sprintf("%.1f", float64(p.UserTempo)/10))
 	g.origBPM.SetText(fmt.Sprintf("original %.1f", float64(p.OriginalTempo)/10))
+}
+
+// loadWave shows pad index (-1: none) with its trim. The sample file is
+// read again only when the pad changes or after invalidatePanel.
+func (g *gui) loadWave(index int, p sp404sx.Pad) {
+	if index != g.waveIndex {
+		g.waveIndex = index
+		g.wave.sample = nil
+		if index >= 0 {
+			if s, err := g.card.ReadSample(index); err == nil {
+				g.wave.sample = s
+			}
+		}
+	}
+	s := g.wave.sample
+	switch {
+	case index < 0:
+		g.wave.setSample(nil, 0, 0)
+		g.trimLabel.SetText("")
+		g.resetTrim.Disable()
+		return
+	case s == nil:
+		g.wave.setSample(nil, 0, 0)
+		g.trimLabel.SetText("Sample file not found or unreadable on the card.")
+		g.resetTrim.Disable()
+		return
+	}
+	start, end := p.TrimFrames()
+	g.wave.setSample(s, start, end)
+	sec := func(f int) float64 { return float64(f) / sp404sx.SampleRate }
+	g.trimLabel.SetText(fmt.Sprintf("Start %.3f s   End %.3f s   Length %.3f s",
+		sec(start), sec(end), sec(end-start)))
+	g.resetTrim.Enable()
+}
+
+// invalidatePanel forces the panel, sample included, to reload: needed
+// after the sample file changes (import, clear, another card).
+func (g *gui) invalidatePanel() {
+	g.shownPad, g.waveIndex = panelStale, -1
+}
+
+// editTrim saves a new trim range (frames) for the selected pad.
+func (g *gui) editTrim(start, end int) {
+	var err error
+	g.editPad(func(p *sp404sx.Pad) { err = p.SetTrim(start, end) })
+	g.showError(err)
 }
 
 // editPad applies change to the selected pad and saves it.

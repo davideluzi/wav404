@@ -103,6 +103,8 @@ func (c *Card) SetPad(index int, p Pad) error {
 		return fmt.Errorf("tempo %.1f out of range 40.0–200.0 BPM", float64(p.UserTempo)/10)
 	case p.UserStart < p.Start || p.UserEnd < p.UserStart || p.UserEnd > p.End:
 		return fmt.Errorf("trim range %d–%d outside the sample", p.UserStart, p.UserEnd)
+	case !p.trimAligned():
+		return fmt.Errorf("trim range %d–%d not on 4-byte boundaries", p.UserStart, p.UserEnd)
 	case p.TempoMode > 2:
 		return fmt.Errorf("tempo mode %d out of range 0–2", p.TempoMode)
 	}

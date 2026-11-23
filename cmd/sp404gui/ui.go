@@ -139,6 +139,7 @@ func (g *gui) openCard(root string) error {
 		return err
 	}
 	g.stopPlayback()
+	g.invalidatePanel()
 	g.card, g.selected = c, -1
 	if !contains(g.cards.Options, root) {
 		g.cards.SetOptions(append(g.cards.Options, root))
@@ -248,6 +249,7 @@ func (g *gui) importInto(first int, paths []string) {
 			}
 			return nil
 		}, func(err error) {
+			g.invalidatePanel()
 			g.selected = pads[len(pads)-1]
 			g.refresh()
 			g.showError(err)
@@ -302,6 +304,7 @@ func (g *gui) clearSelected() {
 	pad := g.selected
 	g.confirm("Clear pad?", fmt.Sprintf("Delete the sample on pad %s from the card?", sp404sx.PadName(pad)), func() {
 		g.stopPlayback()
+		g.invalidatePanel()
 		g.showError(g.card.Clear(pad))
 		g.refresh()
 	})
