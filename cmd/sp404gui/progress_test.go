@@ -2,40 +2,8 @@ package main
 
 import (
 	"math"
-	"strings"
 	"testing"
 )
-
-// Each file weighs in proportion to its size; the batch fraction is the
-// share of all bytes already done.
-func TestBatchProgressWeighsFilesBySize(t *testing.T) {
-	b := newBatchProgress([]int64{100, 300})
-	cases := []struct {
-		file        int
-		done, total int64
-		want        float64
-	}{
-		{0, 0, 10, 0},
-		{0, 5, 10, 0.125},
-		{0, 10, 10, 0.25},
-		{1, 0, 10, 0.25},
-		{1, 5, 10, 0.625},
-		{1, 10, 10, 1},
-	}
-	for _, c := range cases {
-		if got := b.fraction(c.file, c.done, c.total); math.Abs(got-c.want) > 1e-9 {
-			t.Errorf("fraction(%d, %d/%d) = %v, want %v", c.file, c.done, c.total, got, c.want)
-		}
-	}
-}
-
-// Files whose size is unknown (0) still get an equal share.
-func TestBatchProgressUnknownSizes(t *testing.T) {
-	b := newBatchProgress([]int64{0, 0})
-	if got := b.fraction(1, 1, 2); math.Abs(got-0.75) > 1e-9 {
-		t.Errorf("fraction = %v, want 0.75", got)
-	}
-}
 
 type report struct {
 	frac   float64
@@ -64,7 +32,7 @@ func TestImportReportsProgress(t *testing.T) {
 	if math.Abs(last.frac-1) > 1e-9 {
 		t.Errorf("last fraction = %v, want 1", last.frac)
 	}
-	if !strings.Contains(last.detail, "1 of 1") || !strings.Contains(last.detail, "A1") || !strings.Contains(last.detail, "s24.wav") {
-		t.Errorf("detail = %q", last.detail)
+	if last.detail != "A1 ← s24.wav" {
+		t.Errorf("detail = %q, want %q", last.detail, "A1 ← s24.wav")
 	}
 }

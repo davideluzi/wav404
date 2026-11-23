@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -323,15 +322,10 @@ func (g *gui) importInto(pad int, path string) {
 	run := func() {
 		g.stopPlayback()
 		g.runTask("Importing…", func(report progressFunc) error {
-			var size int64
-			if fi, err := os.Stat(path); err == nil {
-				size = fi.Size()
-			}
-			batch := newBatchProgress([]int64{size})
-			detail := fmt.Sprintf("File 1 of 1 → %s: %s", sp404sx.PadName(pad), filepath.Base(path))
+			detail := sp404sx.PadName(pad) + " ← " + filepath.Base(path)
 			report(0, detail)
 			return g.card.ImportFileProgress(pad, path, func(done, total int64) {
-				report(batch.fraction(0, done, total), detail)
+				report(float64(done)/float64(max(total, 1)), detail)
 			})
 		}, func(err error) {
 			g.invalidatePanel()
