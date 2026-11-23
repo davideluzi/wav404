@@ -14,5 +14,8 @@ func main() {
 	w.SetContent(g.content())
 	w.Resize(fyne.NewSize(panelW, panelH+52)) // panel + top strip
 	g.scanCards()
+	installDragHook(
+		func(x, y float64) { fyne.Do(func() { g.dragOverScreen(x, y) }) },
+		func() { fyne.Do(g.dragGone) })
 	w.ShowAndRun()
 }

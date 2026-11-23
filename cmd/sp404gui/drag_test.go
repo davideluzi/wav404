@@ -76,3 +76,16 @@ func TestDragWithoutCardHighlightsNothing(t *testing.T) {
 		t.Errorf("highlighted tiles without card = %v", got)
 	}
 }
+
+// The native hook reports GLFW screen coordinates; they map to canvas
+// positions by dividing by the canvas scale, as Fyne does for the mouse.
+func TestDragScreenPositionUsesCanvasScale(t *testing.T) {
+	g, _ := newTestGUI(t)
+	c := g.win.Canvas().(interface{ SetScale(float32) })
+	c.SetScale(2)
+	pos := center(g.tiles[6])
+	g.dragOverScreen(float64(pos.X*2), float64(pos.Y*2))
+	if got := flagged(g); len(got) != 1 || got[0] != 6 {
+		t.Errorf("highlighted tiles = %v, want [6]", got)
+	}
+}

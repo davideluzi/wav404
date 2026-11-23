@@ -261,6 +261,13 @@ func (g *gui) dragOver(pos fyne.Position) {
 	}
 }
 
+// dragOverScreen is dragOver for a position in GLFW screen coordinates,
+// as the native drag hook reports it; Fyne maps the mouse the same way.
+func (g *gui) dragOverScreen(x, y float64) {
+	s := g.win.Canvas().Scale()
+	g.dragOver(fyne.NewPos(float32(x)/s, float32(y)/s))
+}
+
 // dragGone clears the drop highlight (drag left the window, ended or dropped).
 func (g *gui) dragGone() {
 	if g.dropPad != -1 {
