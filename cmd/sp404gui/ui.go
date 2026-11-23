@@ -27,6 +27,7 @@ type gui struct {
 	bank     int
 	selected int // pad index, -1 = none
 	playing  int // pad index being previewed, -1 = none
+	dropPad  int // pad under a dragged file, -1 = none
 	playGen  int // identifies the current playback; stale end callbacks are ignored
 	player   audioPlayer
 	picker   picker
@@ -47,7 +48,7 @@ type gui struct {
 }
 
 func newGUI(w fyne.Window) *gui {
-	g := &gui{win: w, selected: -1, playing: -1, player: &otoPlayer{},
+	g := &gui{win: w, selected: -1, playing: -1, dropPad: -1, player: &otoPlayer{},
 		picker: choosePicker(w, zenity.IsAvailable())}
 	// a custom dialog: no question-mark icon, and the button says what it does
 	g.confirm = func(title, message, action string, ok func()) {
@@ -67,6 +68,7 @@ func newGUI(w fyne.Window) *gui {
 	g.banks = newBankSelector(func(s string) {
 		g.stopPlayback()
 		g.bank = int(s[0] - 'A')
+		g.dropPad = -1
 		g.selected = -1
 		g.refresh()
 	})
@@ -202,10 +204,7 @@ func (g *gui) selectPad(index int) {
 
 // refresh redraws tiles, the info line and the enabled state of actions.
 func (g *gui) refresh() {
-	for i, t := range g.tiles {
-		index := g.bank*sp404sx.PadsPerBank + i
-		t.set(tileFor(g.card, index), index == g.selected, index == g.playing)
-	}
+	g.refreshTiles()
 	enable := func(b fyne.Disableable, on bool) {
 		if on {
 			b.Enable()
@@ -240,6 +239,36 @@ func (g *gui) refresh() {
 	}
 }
 
+// refreshTiles updates the pads of the current bank; unchanged pads are
+// not redrawn.
+func (g *gui) refreshTiles() {
+	for i, t := range g.tiles {
+		index := g.bank*sp404sx.PadsPerBank + i
+		t.set(tileFor(g.card, index), index == g.selected, index == g.playing, index == g.dropPad)
+	}
+}
+
+// dragOver highlights the pad under a file being dragged over the window
+// (pos is an absolute canvas position), or none outside the pads.
+func (g *gui) dragOver(pos fyne.Position) {
+	pad, ok := g.padAt(pos)
+	if !ok {
+		pad = -1
+	}
+	if pad != g.dropPad {
+		g.dropPad = pad
+		g.refreshTiles()
+	}
+}
+
+// dragGone clears the drop highlight (drag left the window, ended or dropped).
+func (g *gui) dragGone() {
+	if g.dropPad != -1 {
+		g.dropPad = -1
+		g.refreshTiles()
+	}
+}
+
 // padAt returns the pad of the tile under pos (absolute canvas position)
 // in the current bank. ok is false with no card or outside the tiles.
 func (g *gui) padAt(pos fyne.Position) (pad int, ok bool) {
@@ -259,6 +288,7 @@ func (g *gui) padAt(pos fyne.Position) (pad int, ok bool) {
 
 // drop imports a single dropped file into the pad under the cursor.
 func (g *gui) drop(pos fyne.Position, uris []fyne.URI) {
+	g.dragGone()
 	if g.card == nil {
 		g.showError(errors.New("open a card first"))
 		return

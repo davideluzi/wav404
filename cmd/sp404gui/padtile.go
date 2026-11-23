@@ -13,7 +13,8 @@ import (
 )
 
 // padTile is one rubber pad: its number, the sample length and flags. The
-// selected pad gets an amber ring, the playing pad lights up amber.
+// selected pad gets an amber ring, the playing pad lights up amber, and the
+// pad under a dragged file gets a thick amber outline with a light tint.
 //
 // It deliberately does not implement fyne.DoubleTappable: the driver would
 // then hold back every single tap for the whole double-click interval.
@@ -23,6 +24,7 @@ type padTile struct {
 	num               int // 1–12, printed on the pad
 	tile              tile
 	selected, playing bool
+	dropTarget        bool
 	onTap, onDouble   func()
 	scale             float32
 
@@ -37,11 +39,11 @@ func newPadTile(num int, onTap, onDouble func()) *padTile {
 }
 
 // set updates the pad; an unchanged pad is not redrawn.
-func (p *padTile) set(t tile, selected, playing bool) {
-	if t == p.tile && selected == p.selected && playing == p.playing {
+func (p *padTile) set(t tile, selected, playing, dropTarget bool) {
+	if t == p.tile && selected == p.selected && playing == p.playing && dropTarget == p.dropTarget {
 		return
 	}
-	p.tile, p.selected, p.playing = t, selected, playing
+	p.tile, p.selected, p.playing, p.dropTarget = t, selected, playing, dropTarget
 	p.Refresh()
 }
 
@@ -102,6 +104,8 @@ func (p *padTile) CreateRenderer() fyne.WidgetRenderer {
 	// the selection outline is a vector shape: selecting draws no image
 	r.ring = canvas.NewRectangle(color.Transparent)
 	r.ring.StrokeColor = hwAmber
+	r.hover = canvas.NewRectangle(color.NRGBA{0xff, 0xb0, 0x20, 0x33})
+	r.hover.StrokeColor = hwAmber
 	r.Refresh()
 	return r
 }
@@ -109,7 +113,7 @@ func (p *padTile) CreateRenderer() fyne.WidgetRenderer {
 type padRenderer struct {
 	p                  *padTile
 	body               *canvas.Raster
-	ring               *canvas.Rectangle
+	ring, hover        *canvas.Rectangle
 	num, detail, flags *canvas.Text
 }
 
@@ -120,6 +124,10 @@ func (r *padRenderer) Layout(size fyne.Size) {
 	r.ring.Resize(fyne.NewSize(size.Width-2*float32(inset), size.Height-2*float32(inset)))
 	r.ring.CornerRadius = float32(radius)
 	r.ring.StrokeWidth = 2 * r.p.scale
+	r.hover.Move(r.ring.Position())
+	r.hover.Resize(r.ring.Size())
+	r.hover.CornerRadius = r.ring.CornerRadius
+	r.hover.StrokeWidth = 3 * r.p.scale
 	center := func(t *canvas.Text, y float32) {
 		m := t.MinSize()
 		t.Move(fyne.NewPos((size.Width-m.Width)/2, size.Height*y-m.Height/2))
@@ -150,6 +158,7 @@ func (r *padRenderer) Refresh() {
 	}
 	r.num.Color, r.detail.Color, r.flags.Color = ink, sub, sub
 	r.ring.Hidden = !p.selected
+	r.hover.Hidden = !p.dropTarget
 	r.Layout(p.Size())
 	for _, o := range r.Objects() {
 		o.Refresh()
@@ -157,7 +166,7 @@ func (r *padRenderer) Refresh() {
 }
 
 func (r *padRenderer) Objects() []fyne.CanvasObject {
-	return []fyne.CanvasObject{r.body, r.ring, r.num, r.detail, r.flags}
+	return []fyne.CanvasObject{r.body, r.hover, r.ring, r.num, r.detail, r.flags}
 }
 
 func (r *padRenderer) Destroy() {}
