@@ -4,5 +4,5 @@ Website = "https://github.com/davideluzi/wav404"
 Icon = "Icon.png"
 Name = "wav404"
 ID = "app.wav404"
-Version = "0.1.0"
+Version = "0.1.1"
 Build = 3
