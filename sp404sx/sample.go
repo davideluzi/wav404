@@ -104,7 +104,7 @@ func (s *Sample) NewPad() Pad {
 	return Pad{
 		Start: HeaderSize, End: end, UserStart: HeaderSize, UserEnd: end,
 		Volume: 127, Gate: true, Format: FormatWAV, Channels: uint8(s.Channels),
-		OriginalTempo: bpm, UserTempo: bpm,
+		Tempo: bpm, TempoCopy: bpm,
 	}
 }
 

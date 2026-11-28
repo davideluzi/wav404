@@ -77,19 +77,21 @@ func padInfo(j5, a10 *sp404sx.Sample) *sp404sx.PadInfo {
 		end := sp404sx.HeaderSize + 4*frames
 		return sp404sx.Pad{Start: 512, End: end, UserStart: 512, UserEnd: end,
 			Volume: 127, Gate: true, Format: sp404sx.FormatWAV, Channels: 2,
-			OriginalTempo: 1200, UserTempo: 1200}
+			Tempo: 1200, TempoCopy: 1200}
 	}
 	a2 := stereo(882000) // 20 s loop, edited on the "device"
 	a2.Volume, a2.Loop, a2.Gate = 97, true, false
 	pi.Pads[sp404sx.PadIndex('A', 2)] = a2
 
-	b4 := stereo(274909) // trimmed, reversed, lo-fi, slowed down
+	// trimmed, reversed, lo-fi; the tempo fields differ, as wav404 left them
+	// before it wrote both (the device shows bytes 24–27)
+	b4 := stereo(274909)
 	b4.UserStart, b4.UserEnd = 512+4*1000, 512+4*200000
-	b4.Reverse, b4.Lofi, b4.OriginalTempo, b4.UserTempo = true, true, 770, 410
+	b4.Reverse, b4.Lofi, b4.Tempo, b4.TempoCopy = true, true, 770, 410
 	pi.Pads[sp404sx.PadIndex('B', 4)] = b4
 
 	c1 := stereo(117600)
-	c1.TempoMode, c1.Volume, c1.OriginalTempo, c1.UserTempo = 1, 99, 900, 900
+	c1.TempoMode, c1.Volume, c1.Tempo, c1.TempoCopy = 1, 99, 900, 900
 	pi.Pads[sp404sx.PadIndex('C', 1)] = c1
 
 	for _, n := range []int{1, 2, 3, 4, 6, 7, 8} { // a fuller bank J for the GUI

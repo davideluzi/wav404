@@ -53,7 +53,7 @@ func TestImportOneFileFromPicker(t *testing.T) {
 	fp.openDone(fixture("s24.aif"), nil)
 
 	c, _ := sp404sx.OpenCard(root)
-	if p := c.Info.Pads[0]; p.Empty() || p.OriginalTempo != 890 {
+	if p := c.Info.Pads[0]; p.Empty() || p.Tempo != 890 {
 		t.Errorf("A1 after import = %+v", p)
 	}
 	if c.Info.Pads[1] != a2Before {

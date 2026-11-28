@@ -5,7 +5,7 @@ import "testing"
 func stereoPad(frames uint32) Pad {
 	end := HeaderSize + 4*frames
 	return Pad{Start: 512, End: end, UserStart: 512, UserEnd: end, Volume: 127,
-		Gate: true, Format: FormatWAV, Channels: 2, OriginalTempo: 1200, UserTempo: 1200}
+		Gate: true, Format: FormatWAV, Channels: 2, Tempo: 1200, TempoCopy: 1200}
 }
 
 func TestTrimFrames(t *testing.T) {
@@ -80,5 +80,26 @@ func TestSetPadRejectsUnalignedTrim(t *testing.T) {
 	p.UserStart += 2
 	if err := c.SetPad(j5, p); err == nil {
 		t.Error("unaligned user start accepted")
+	}
+}
+
+// The SP-404SX recomputes the tempo of a trimmed pad from the new length
+// and writes it to both fields (seen on 7 trimmed pads of the real card).
+func TestSetTrimSetsAutoTempo(t *testing.T) {
+	p := stereoPad(882000)
+	if err := p.SetTrim(1000, 61000); err != nil {
+		t.Fatal(err)
+	}
+	want := uint32(ComputeBPM(60000))
+	if p.Tempo != want || p.TempoCopy != want {
+		t.Errorf("tempo fields %d, %d; want %d", p.Tempo, p.TempoCopy, want)
+	}
+}
+
+func TestAutoTempoClamped(t *testing.T) {
+	p := stereoPad(1000)
+	p.UserEnd = p.UserStart + 4 // a single frame: ComputeBPM is far above 200 BPM
+	if got := p.AutoTempo(); got != MaxTempo {
+		t.Errorf("AutoTempo of one frame = %d, want %d", got, MaxTempo)
 	}
 }

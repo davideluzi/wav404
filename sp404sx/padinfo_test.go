@@ -26,7 +26,7 @@ func TestParsePadInfoKnownPad(t *testing.T) {
 	want := Pad{
 		Start: 512, End: 512 + 118916, UserStart: 512, UserEnd: 512 + 118916,
 		Volume: 127, Gate: true, Format: FormatWAV, Channels: 2,
-		OriginalTempo: 890, UserTempo: 890,
+		Tempo: 890, TempoCopy: 890,
 	}
 	if p != want {
 		t.Errorf("J5 = %+v\nwant %+v", p, want)

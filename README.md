@@ -19,7 +19,7 @@ app and as a command-line tool.
   32/64-bit float, mono or stereo, any sample rate. Files are converted to the
   SP-404SX format (44.1 kHz, 16-bit) with a high-quality resampler. Files that are
   already 16-bit / 44.1 kHz are copied bit for bit.
-- **Original tempo** computed exactly like Roland's converter.
+- **Tempo** computed exactly like Roland's converter, and recomputed after a trim like the device does.
 - **Listen** to pads as they would sound (trim range, reverse, volume).
 - **Pad settings**: volume, loop, gate, reverse, lo-fi, tempo.
 - **Trim** on a waveform: drag the start and end markers.

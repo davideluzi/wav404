@@ -64,7 +64,7 @@ func TestDropImportsIntoPadUnderCursor(t *testing.T) {
 	g.drop(pos, []fyne.URI{storage.NewFileURI(src)})
 
 	c, _ := sp404sx.OpenCard(root)
-	if c.Info.Pads[0].Empty() || c.Info.Pads[0].OriginalTempo != 890 {
+	if c.Info.Pads[0].Empty() || c.Info.Pads[0].Tempo != 890 {
 		t.Errorf("A1 after drop = %+v", c.Info.Pads[0])
 	}
 	if g.tiles[0].tile.empty {

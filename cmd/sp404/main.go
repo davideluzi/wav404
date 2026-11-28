@@ -65,7 +65,7 @@ func run(args []string, out io.Writer) error {
 		}
 		p := card.Info.Pads[pad]
 		fmt.Fprintf(out, "%s ← %s (%.2fs, %.1f BPM)\n", sp404sx.PadName(pad), pos[3],
-			float64(p.Frames())/sp404sx.SampleRate, float64(p.OriginalTempo)/10)
+			float64(p.Frames())/sp404sx.SampleRate, float64(p.Tempo)/10)
 	case "export":
 		if err := card.ExportFile(pad, pos[3], trim); err != nil {
 			return err
@@ -100,7 +100,7 @@ func list(c *sp404sx.Card, out io.Writer) error {
 		}
 		fmt.Fprintf(out, "%-3s %s  %-6s %7.2fs  %5.1f BPM  vol %3d  %s\n",
 			sp404sx.PadName(i), sp404sx.SampleFileName(i), ch,
-			float64(p.Frames())/sp404sx.SampleRate, float64(p.UserTempo)/10, p.Volume,
+			float64(p.Frames())/sp404sx.SampleRate, float64(p.Tempo)/10, p.Volume,
 			strings.Join(flags, " "))
 	}
 	return nil

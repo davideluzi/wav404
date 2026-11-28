@@ -26,7 +26,7 @@ func tileFor(c *sp404sx.Card, index int) tile {
 	}
 	p := c.Info.Pads[index]
 	t.empty = false
-	t.detail = fmt.Sprintf("%.2f s · %.1f BPM", float64(p.Frames())/sp404sx.SampleRate, float64(p.UserTempo)/10)
+	t.detail = fmt.Sprintf("%.2f s · %.1f BPM", float64(p.Frames())/sp404sx.SampleRate, float64(p.Tempo)/10)
 	var flags []string
 	for _, f := range []struct {
 		on   bool

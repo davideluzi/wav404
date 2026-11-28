@@ -47,12 +47,27 @@ Only 44.1 kHz / 16 bit. Mono or stereo (on the card: 99 stereo, 3 mono).
 | 21 | file format | **1 = `.WAV`, 0 = `.AIF`** (see below) |
 | 22 | channels | 1/2 |
 | 23 | tempo mode | 0–2; the converter writes 0 and only passes it through |
-| 24–27 | original tempo | BPM × 10, 0–2000 |
-| 28–31 | user tempo | BPM × 10, 400–2000 (40.0–200.0 BPM) |
+| 24–27 | tempo | BPM × 10; **the value the device shows and uses** (converter invariant 0–2000) |
+| 28–31 | tempo copy | BPM × 10, always the same value as 24–27 (converter invariant 400–2000) |
 
 Empty pad: 512/512/512/512, vol 127, lofi 0, loop 0, gate 1, rev 0, b21 1, ch 2, tm 0, 1200/1200.
 
-The ranges come from `SP::CSampleParameter::ClassInvariant`. The converter calls the field mapping
+The ranges come from `SP::CSampleParameter::ClassInvariant`.
+
+### Tempo fields (checked on the real card, 2026-11-28)
+
+The converter fills both tempo fields with the same value, so it does not tell them apart. The
+card does:
+
+- The SP-404SX **displays bytes 24–27**. Changing only bytes 28–31 (what wav404 did at first)
+  leaves the device showing the old BPM.
+- Every tempo change made on the device (e.g. 114.0 instead of 113.7, or a halved BPM) is written
+  to **both** fields.
+- A trim made on the device **recomputes** the tempo as `ComputeBpm(trimmed length in frames)` and
+  writes it to both fields (7 trimmed pads, all exact).
+- So no field keeps the "original" BPM: it can only be recomputed from the length.
+
+wav404 writes both fields (`Pad.SetTempo`), and recomputes the tempo when it changes the trim. The converter calls the field mapping
 "marshalling" (`CModelMarshaller::MarshallSp404sx` / `Unmarshall`).
 
 ### Byte offsets ↔ frames
@@ -75,7 +90,7 @@ writes WAV + b21=1.
 
 ## Original tempo (`SP::CSampleParameter::ComputeBpm`)
 
-On import, original tempo = user tempo = `ComputeBpm(lengthInFrames)`. The algorithm works in
+On import, both tempo fields = `ComputeBpm(lengthInFrames)`. The algorithm works in
 **4/4 bars** (the constant 105 840 000 = 600 × 44100 × 4) and picks the number of bars whose BPM
 is closest to **120.0**:
 
@@ -106,7 +121,7 @@ computeBpm(len):
 ```
 
 Checked against the card: 90/102 pads match exactly. The other 12 have tempo or trim changed on the
-device (e.g. 4, 8, 24 exact beats, or user tempo ≠ original tempo).
+device: trimmed pads match `ComputeBpm` of the trimmed length, the rest were set by hand.
 
 ## Import (`CControllerSp404sx::Import`)
 
@@ -118,7 +133,7 @@ device (e.g. 4, 8, 24 exact beats, or user tempo ≠ original tempo).
    then reduction to 16 bit. **No dither** (no rand/dither symbols in the binary).
 5. `ConformSp404sxWaveFileConstraint` rewrites the file: `fmt ` + `RLND`(`spsx` sub-chunk) + `data`, header 512.
 6. Pad parameters: start 0, end = length, user start 0, user end = length, vol 127, lofi 0, loop 0,
-   gate 1, rev 0, b21 per format, ch from the file, tempo mode 0, original = user = `ComputeBpm(length)`.
+   gate 1, rev 0, b21 per format, ch from the file, tempo mode 0, both tempo fields = `ComputeBpm(length)`.
 
 **Loop points (`smpl`, AIFF `MARK`/`INST`) are ignored**: the converter parses them (`SL::CLoop`) but
 does not carry them into the pad (loop flag 0, user start/end = whole sample).

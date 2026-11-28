@@ -91,9 +91,9 @@ func (c *Card) Clear(index int) error {
 }
 
 // SetPad changes the playback settings of an assigned pad (volume, flags,
-// user tempo, trim range) and writes PAD_INFO.BIN. Fields that describe the
-// sample file (offsets, channels, format, original tempo) cannot change.
-// Values are checked against the converter's limits.
+// tempo, trim range) and writes PAD_INFO.BIN. Fields that describe the
+// sample file (offsets, channels, format) cannot change. Changed values are
+// checked against the device's limits; a new tempo must be in both fields.
 func (c *Card) SetPad(index int, p Pad) error {
 	if err := checkIndex(index); err != nil {
 		return err
@@ -103,12 +103,14 @@ func (c *Card) SetPad(index int, p Pad) error {
 	case cur.Empty():
 		return fmt.Errorf("pad %s is empty", PadName(index))
 	case p.Start != cur.Start || p.End != cur.End || p.Channels != cur.Channels ||
-		p.Format != cur.Format || p.OriginalTempo != cur.OriginalTempo:
+		p.Format != cur.Format:
 		return fmt.Errorf("pad %s: the sample's own fields cannot be changed", PadName(index))
 	case p.Volume > 127:
 		return fmt.Errorf("volume %d out of range 0–127", p.Volume)
-	case p.UserTempo < 400 || p.UserTempo > 2000:
-		return fmt.Errorf("tempo %.1f out of range 40.0–200.0 BPM", float64(p.UserTempo)/10)
+	case (p.Tempo != cur.Tempo || p.TempoCopy != cur.TempoCopy) && p.Tempo != p.TempoCopy:
+		return fmt.Errorf("tempo fields differ (%d, %d): use SetTempo", p.Tempo, p.TempoCopy)
+	case p.Tempo != cur.Tempo && (p.Tempo < MinTempo || p.Tempo > MaxTempo):
+		return fmt.Errorf("tempo %.1f out of range 40.0–200.0 BPM", float64(p.Tempo)/10)
 	case p.UserStart < p.Start || p.UserEnd < p.UserStart || p.UserEnd > p.End:
 		return fmt.Errorf("trim range %d–%d outside the sample", p.UserStart, p.UserEnd)
 	case !p.trimAligned():

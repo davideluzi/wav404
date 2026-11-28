@@ -25,7 +25,7 @@ type padPanel struct {
 	bpmDisplay                *hwDisplay
 	bpm                       *widget.Entry // tempo editor, shown when the display is tapped
 	bpmPopup                  *widget.PopUp
-	origBPM                   *canvas.Text
+	autoBPM                   *canvas.Text // tempo the device would compute for the trim
 	resetBPM                  *hwKey
 	wave                      *waveView
 	trimLabel                 *canvas.Text
@@ -83,12 +83,12 @@ func (g *gui) buildPanel() {
 			g.showError(err)
 			return
 		}
-		g.editPad(func(p *sp404sx.Pad) { p.UserTempo = tempo })
+		g.editPad(func(p *sp404sx.Pad) { p.SetTempo(tempo) })
 	}
-	g.origBPM = silk("", 11, hwSilkDim)
-	g.resetBPM = newHWKey("ORIG", 10, 5)
+	g.autoBPM = silk("", 11, hwSilkDim)
+	g.resetBPM = newHWKey("AUTO", 10, 5)
 	g.resetBPM.onTap = func() {
-		g.editPad(func(p *sp404sx.Pad) { p.UserTempo = p.OriginalTempo })
+		g.editPad(func(p *sp404sx.Pad) { p.SetTempo(p.AutoTempo()) })
 	}
 }
 
@@ -158,13 +158,13 @@ func (g *gui) loadPanel() {
 		g.bpm.SetText("")
 		g.bpmDisplay.setText("")
 		setText(g.volumeLabel, "")
-		setText(g.origBPM, "")
+		setText(g.autoBPM, "")
 		return
 	}
-	tempo := fmt.Sprintf("%.1f", float64(p.UserTempo)/10)
+	tempo := fmt.Sprintf("%.1f", float64(p.Tempo)/10)
 	g.bpm.SetText(tempo)
 	g.bpmDisplay.setText(tempo)
-	setText(g.origBPM, fmt.Sprintf("ORIGINAL %.1f", float64(p.OriginalTempo)/10))
+	setText(g.autoBPM, fmt.Sprintf("AUTO %.1f", float64(p.AutoTempo())/10))
 }
 
 // loadWave shows pad index (-1: none) with its trim. The sample file is

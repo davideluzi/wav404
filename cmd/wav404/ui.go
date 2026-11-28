@@ -132,7 +132,7 @@ func (g *gui) content() fyne.CanvasObject {
 	// right: tempo, volume, trim, transport
 	caption("BPM", 660, 20)
 	l.place(g.bpmDisplay, 660, 38, 220, 92)
-	l.place(g.origBPM, 660, 136, 0, 0)
+	l.place(g.autoBPM, 660, 136, 0, 0)
 	l.place(g.resetBPM, 812, 132, 68, 24)
 	caption("VOLUME", 912, 20)
 	l.place(g.volume, 898, 34, 104, 104)

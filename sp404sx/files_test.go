@@ -38,8 +38,8 @@ func TestImportFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Frames() != 118916/4 || c.Info.Pads[0].OriginalTempo != 890 {
-		t.Errorf("frames=%d bpm=%d", s.Frames(), c.Info.Pads[0].OriginalTempo)
+	if s.Frames() != 118916/4 || c.Info.Pads[0].Tempo != 890 {
+		t.Errorf("frames=%d bpm=%d", s.Frames(), c.Info.Pads[0].Tempo)
 	}
 }
 

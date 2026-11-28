@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -38,8 +39,8 @@ func TestPanelShowsSelectedPad(t *testing.T) {
 	if !g.gate.Checked || g.loop.Checked || g.reverse.Checked || g.lofi.Checked {
 		t.Error("flags do not match J5 (gate only)")
 	}
-	if g.bpm.Text != "89.0" || !strings.Contains(g.origBPM.Text, "89.0") {
-		t.Errorf("bpm %q, original %q", g.bpm.Text, g.origBPM.Text)
+	if g.bpm.Text != "89.0" || g.autoBPM.Text != "AUTO 89.0" {
+		t.Errorf("bpm %q, auto %q", g.bpm.Text, g.autoBPM.Text)
 	}
 	if g.volume.Disabled() || g.bpm.Disabled() {
 		t.Error("panel disabled on an assigned pad")
@@ -110,8 +111,8 @@ func TestBPMEntry(t *testing.T) {
 	j5 := selectJ5(g)
 	g.bpm.SetText("130")
 	g.bpm.OnSubmitted("130")
-	if p := reopenPad(t, root, j5); p.UserTempo != 1300 || p.OriginalTempo != 890 {
-		t.Errorf("tempo = %d (original %d)", p.UserTempo, p.OriginalTempo)
+	if p := reopenPad(t, root, j5); p.Tempo != 1300 || p.TempoCopy != 1300 {
+		t.Errorf("tempo fields = %d, %d; want both 1300", p.Tempo, p.TempoCopy)
 	}
 	if g.bpm.Text != "130.0" {
 		t.Errorf("entry shows %q", g.bpm.Text)
@@ -119,13 +120,13 @@ func TestBPMEntry(t *testing.T) {
 
 	g.bpm.SetText("250") // out of range: rejected, entry restored
 	g.bpm.OnSubmitted("250")
-	if reopenPad(t, root, j5).UserTempo != 1300 || g.bpm.Text != "130.0" {
-		t.Errorf("invalid tempo: saved %d, entry %q", reopenPad(t, root, j5).UserTempo, g.bpm.Text)
+	if reopenPad(t, root, j5).Tempo != 1300 || g.bpm.Text != "130.0" {
+		t.Errorf("invalid tempo: saved %d, entry %q", reopenPad(t, root, j5).Tempo, g.bpm.Text)
 	}
 
 	test.Tap(g.resetBPM)
-	if reopenPad(t, root, j5).UserTempo != 890 || g.bpm.Text != "89.0" {
-		t.Error("reset to original tempo failed")
+	if p := reopenPad(t, root, j5); p.Tempo != 890 || p.TempoCopy != 890 || g.bpm.Text != "89.0" {
+		t.Error("reset to the automatic tempo failed")
 	}
 }
 
@@ -163,6 +164,10 @@ func TestTrimSavesAndResets(t *testing.T) {
 	}
 	if g.wave.start != 1000 || g.wave.end != 20000 || !strings.Contains(g.trimLabel.Text, "0.431") {
 		t.Errorf("after trim: markers %d–%d, label %q", g.wave.start, g.wave.end, g.trimLabel.Text)
+	}
+	want := uint32(sp404sx.ComputeBPM(19000)) // the device recomputes the tempo on a trim
+	if p.Tempo != want || p.TempoCopy != want || g.bpmDisplay.text != fmt.Sprintf("%.1f", float64(want)/10) {
+		t.Errorf("tempo after trim %d/%d, display %q; want %d", p.Tempo, p.TempoCopy, g.bpmDisplay.text, want)
 	}
 	test.Tap(g.resetTrim)
 	if p := reopenPad(t, root, j5); p.UserStart != p.Start || p.UserEnd != p.End {
@@ -227,8 +232,8 @@ func TestBPMDisplay(t *testing.T) {
 	if g.bpmPopup.Visible() {
 		t.Error("editor still open after Enter")
 	}
-	if g.bpmDisplay.text != "120.0" || reopenPad(t, root, j5).UserTempo != 1200 {
-		t.Errorf("display %q, saved %d", g.bpmDisplay.text, reopenPad(t, root, j5).UserTempo)
+	if g.bpmDisplay.text != "120.0" || reopenPad(t, root, j5).Tempo != 1200 {
+		t.Errorf("display %q, saved %d", g.bpmDisplay.text, reopenPad(t, root, j5).Tempo)
 	}
 	test.Tap(g.tiles[11]) // J12: empty
 	if g.bpmDisplay.text != "" {

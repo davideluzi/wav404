@@ -34,10 +34,13 @@ type Pad struct {
 	Lofi, Loop, Gate   bool
 	Reverse            bool
 	Format             FileFormat
-	Channels           uint8  // 1 or 2
-	TempoMode          uint8  // 0–2, device-side; passed through untouched
-	OriginalTempo      uint32 // BPM × 10
-	UserTempo          uint32 // BPM × 10
+	Channels           uint8 // 1 or 2
+	TempoMode          uint8 // 0–2, device-side; passed through untouched
+	// Tempo (bytes 24–27) is the BPM × 10 the SP-404SX shows and uses.
+	// TempoCopy (bytes 28–31) holds the same value: the device and Roland's
+	// converter always write both. Change them together with SetTempo.
+	Tempo     uint32
+	TempoCopy uint32
 }
 
 // EmptyPad returns the record the SP-404SX writes for an unassigned pad.
@@ -45,7 +48,7 @@ func EmptyPad() Pad {
 	return Pad{
 		Start: HeaderSize, End: HeaderSize, UserStart: HeaderSize, UserEnd: HeaderSize,
 		Volume: 127, Gate: true, Format: FormatWAV, Channels: 2,
-		OriginalTempo: 1200, UserTempo: 1200,
+		Tempo: 1200, TempoCopy: 1200,
 	}
 }
 
@@ -96,7 +99,7 @@ func ParsePadInfo(raw []byte) (*PadInfo, error) {
 			UserStart: be.Uint32(r[8:]), UserEnd: be.Uint32(r[12:]),
 			Volume: r[16], Lofi: r[17] != 0, Loop: r[18] != 0, Gate: r[19] != 0,
 			Reverse: r[20] != 0, Format: FileFormat(r[21]), Channels: r[22], TempoMode: r[23],
-			OriginalTempo: be.Uint32(r[24:]), UserTempo: be.Uint32(r[28:]),
+			Tempo: be.Uint32(r[24:]), TempoCopy: be.Uint32(r[28:]),
 		}
 	}
 	return pi, nil
@@ -114,8 +117,8 @@ func (pi *PadInfo) MarshalBinary() []byte {
 		be.PutUint32(r[12:], p.UserEnd)
 		r[16], r[17], r[18], r[19], r[20] = p.Volume, b2u(p.Lofi), b2u(p.Loop), b2u(p.Gate), b2u(p.Reverse)
 		r[21], r[22], r[23] = byte(p.Format), p.Channels, p.TempoMode
-		be.PutUint32(r[24:], p.OriginalTempo)
-		be.PutUint32(r[28:], p.UserTempo)
+		be.PutUint32(r[24:], p.Tempo)
+		be.PutUint32(r[28:], p.TempoCopy)
 	}
 	return out
 }
@@ -129,7 +132,8 @@ func (p Pad) TrimFrames() (start, end int) {
 // SetTrim sets the user start and end points from frame positions
 // (0 ≤ start < end ≤ Frames). Like Roland's converter, offsets are rounded
 // down to a multiple of 4 bytes (every frame in stereo, every second frame
-// in mono); the end of the sample always stays reachable.
+// in mono); the end of the sample always stays reachable. Like the
+// SP-404SX, it then sets the tempo to AutoTempo of the new range.
 func (p *Pad) SetTrim(start, end int) error {
 	frames := p.Frames()
 	if start < 0 || end > frames || start >= end {
@@ -146,7 +150,25 @@ func (p *Pad) SetTrim(start, end int) error {
 		return fmt.Errorf("trim %d–%d too short", start, end)
 	}
 	p.UserStart, p.UserEnd = us, ue
+	p.SetTempo(p.AutoTempo())
 	return nil
+}
+
+// Tempo limits (BPM × 10) for a tempo set by hand, as on the device.
+const (
+	MinTempo = 400
+	MaxTempo = 2000
+)
+
+// SetTempo sets the pad's tempo (BPM × 10) in both tempo fields, as the
+// SP-404SX does.
+func (p *Pad) SetTempo(tempo uint32) { p.Tempo, p.TempoCopy = tempo, tempo }
+
+// AutoTempo is the tempo the SP-404SX gives the pad's trimmed range:
+// ComputeBPM of its length, kept within MinTempo–MaxTempo.
+func (p Pad) AutoTempo() uint32 {
+	start, end := p.TrimFrames()
+	return uint32(min(max(ComputeBPM(end-start), MinTempo), MaxTempo))
 }
 
 // trimAligned reports whether the user points sit on 4-byte boundaries

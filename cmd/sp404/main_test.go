@@ -72,7 +72,7 @@ func TestImportCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := c.Info.Pads[0]
-	if p.Empty() || p.Channels != 2 || p.OriginalTempo != 890 {
+	if p.Empty() || p.Channels != 2 || p.Tempo != 890 {
 		t.Errorf("pad A1 after import = %+v", p)
 	}
 	if _, err := c.ReadSample(0); err != nil {
